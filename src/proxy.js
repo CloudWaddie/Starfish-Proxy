@@ -123,6 +123,21 @@ class MinecraftProxy {
     registerProxyCommands() {
         this.commandHandler.register('proxy', (registry) => {
             const { command } = registry;
+            const { handleAliasCommand } = require('./commands/aliases');
+            const { handleCalcCommand } = require('./commands/calc');
+            
+            command('calc')
+                .description('Perform a calculation')
+                .argument('expression', { type: 'greedy' })
+                .handler((ctx) => handleCalcCommand(ctx));
+
+            command('alias')
+                .description('Manage command aliases')
+                .argument('subcommand', { optional: true, choices: ['add', 'remove', 'list'] })
+                .argument('alias', { optional: true })
+                .argument('command', { optional: true, type: 'greedy' })
+                .option('--passthrough', 'Forward the original command to the server')
+                .handler((ctx) => handleAliasCommand(ctx));
             
             command('server')
                 .description('List and switch servers')

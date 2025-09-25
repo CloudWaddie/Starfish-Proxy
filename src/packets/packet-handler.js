@@ -74,8 +74,31 @@ class PacketHandler {
         const isSafe = this.safePackets.get(direction)?.has(meta.name) || false;
         
         if (direction === 'client' && meta.name === 'chat' && data.message.startsWith('/')) {
-            const handled = session.proxy.commandHandler.handleCommand(data.message, session.client);
-            if (handled) return;
+            let message = data.message;
+            const proxy = session.proxy;
+            const aliases = proxy.config.aliases || {};
+            const parts = message.slice(1).split(' ');
+            const alias = parts[0].toLowerCase();
+
+            if (aliases[alias]) {
+                const aliasConfig = aliases[alias];
+                const remainingArgs = parts.slice(1).join(' ');
+                const expandedCommand = `${aliasConfig.command} ${remainingArgs}`.trim();
+
+                if (aliasConfig.passthrough) {
+                    this.forwardPacket(session, 'client', 'chat', { message });
+                }
+
+                const handled = proxy.commandHandler.handleCommand(expandedCommand, session.client);
+                if (handled) {
+                    return; 
+                } else {
+                    data.message = expandedCommand;
+                }
+            } else {
+                const handled = proxy.commandHandler.handleCommand(message, session.client);
+                if (handled) return;
+            }
         }
 
         let shouldForward = true;
@@ -87,10 +110,6 @@ class PacketHandler {
             finalData = result.data;
         }
 
-        if (shouldForward) {
-            this.forwardPacket(session, direction, meta.name, finalData);
-        }
-
         if (definition?.updatesState) {
             try {
                 session.gameState.updateFromPacket(meta, data, direction === 'server');
@@ -100,6 +119,10 @@ class PacketHandler {
                     console.error(error.stack);
                 }
             }
+        }
+
+        if (shouldForward) {
+            this.forwardPacket(session, direction, meta.name, finalData);
         }
 
         if (definition?.eventMapping && session.connected && session.proxy.currentPlayer === session) {

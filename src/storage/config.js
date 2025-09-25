@@ -5,7 +5,8 @@ const DEFAULT_CONFIG = {
     servers: {
         'hypixel': { host: 'mc.hypixel.net', port: 25565 },
         'ac-test': { host: 'anticheat-test.com', port: 25565 }
-    }
+    },
+    aliases: {}
 };
 
-module.exports = { DEFAULT_CONFIG }; 
+module.exports = { DEFAULT_CONFIG };

@@ -1,4 +1,4 @@
-const { Command, Option } = require('commander');
+const { Command, Option, Argument } = require('commander');
 const THEME = require('./theme');
 const ChatBuilder = require('./chat-builder');
 const { getProperty, setProperty, createPaginator } = require('./utils');
@@ -86,16 +86,16 @@ class CommandHandler {
 
                 const argMeta = { name: argName, type, description, optional, defaultValue, choices, usage: usageString };
                 commandMetadata.arguments.push(argMeta);
-                
-                if (optional) {
-                    cmd.argument(usageString, description, defaultValue);
-                } else {
-                    cmd.argument(usageString, description);
-                }
 
-                if (choices) {
-                    cmd.choices(choices);
+                const argument = new Argument(usageString, description);
+                if (optional) {
+                    argument.default(defaultValue);
                 }
+                if (choices) {
+                    argument.choices(choices);
+                }
+                
+                cmd.addArgument(argument);
 
                 return builder;
             },
@@ -118,6 +118,7 @@ class CommandHandler {
                     });
 
                     const ctx = {
+                        proxy: this.proxy,
                         client: this._currentClient,
                         args: parsedArgs,
                         options,
@@ -251,4 +252,4 @@ class CommandHandler {
     }
 }
 
-module.exports = { CommandHandler }; 
+module.exports = { CommandHandler };

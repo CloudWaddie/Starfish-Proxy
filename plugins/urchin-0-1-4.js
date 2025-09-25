@@ -756,7 +756,7 @@ class UrchinPlugin {
             });
 
             req.on('error', (err) => {
-                reject(err);
+                reject(new Error('Urchin API is currently unavailable.'));
             });
             
             req.write(jsonBody);
@@ -802,7 +802,7 @@ class UrchinPlugin {
             });
 
             req.on('error', (error) => {
-                reject(new Error(`Request failed: ${error.message}`));
+                reject(new Error('Mojang API is currently unavailable.'));
             });
 
             req.end();
@@ -849,7 +849,7 @@ class UrchinPlugin {
             });
 
             req.on('error', (error) => {
-                reject(new Error(`Request failed: ${error.message}`));
+                reject(new Error('Urchin API is currently unavailable.'));
             });
             
             req.write(jsonBody);

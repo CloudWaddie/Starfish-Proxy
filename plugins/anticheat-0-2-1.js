@@ -30,6 +30,12 @@ module.exports = (api) => {
                     description: defaultCheckConfig.description || `Enables or disables the ${checkName} check.`
                 },
                 {
+                    type: 'toggle',
+                    key: `checks.${checkName}.autoWdr`,
+                    text: ['OFF', 'ON'],
+                    description: `Automatically reports the player for ${checkName}.`
+                },
+                {
                     type: 'soundToggle',
                     key: `checks.${checkName}.sound`,
                     condition: (cfg) => cfg.checks[checkName].enabled,
@@ -85,7 +91,7 @@ module.exports = (api) => {
 const CHECKS = {
     NoSlowA: {
         config: { 
-            enabled: true, sound: true, vl: 10, cooldown: 2000, 
+            enabled: true, sound: true, vl: 10, cooldown: 2000, autoWdr: false,
             description: "Detects moving too fast while using items that should slow you down (eating food, drawing bow, blocking sword)." 
         },
         
@@ -134,7 +140,7 @@ const CHECKS = {
     
     AutoBlockA: {
         config: { 
-            enabled: true, sound: true, vl: 10, cooldown: 2000, 
+            enabled: true, sound: true, vl: 10, cooldown: 2000, autoWdr: false,
             description: "Detects attacking while blocking with a sword." 
         },
         
@@ -205,7 +211,7 @@ const CHECKS = {
     
     EagleA: {
         config: { 
-            enabled: true, sound: true, vl: 5, cooldown: 2000, 
+            enabled: true, sound: true, vl: 5, cooldown: 2000, autoWdr: false,
             description: "Detects diagonal double-shifting eagle (legit scaffold) patterns." 
         },
 
@@ -250,7 +256,7 @@ const CHECKS = {
     
     ScaffoldA: {
         config: { 
-            enabled: false, sound: true, vl: 15, cooldown: 2000, 
+            enabled: false, sound: true, vl: 15, cooldown: 2000, autoWdr: false,
             description: "Detects fast flat scaffold with no vertical movement" 
         },
 
@@ -287,7 +293,7 @@ const CHECKS = {
     
     TowerA: {
         config: { 
-            enabled: false, sound: true, vl: 10, cooldown: 2000, 
+            enabled: false, sound: true, vl: 10, cooldown: 2000, autoWdr: false,
             description: "Detects ascending (towering) faster than normal while placing blocks below." 
         },
         
@@ -926,27 +932,28 @@ class AnticheatSystem {
     }
     
     flag(player, checkName, vl) {
-        this.api.debugLog(`[FLAG DEBUG] Player object:`, { 
-            username: player.username, 
-            name: player.name, 
-            displayName: player.displayName,
-            uuid: player.uuid
-        });
         const cleanName = player.username || player.name || player.displayName?.replace(/§./g, '') || 'Unknown';
-        
         const team = this.api.getPlayerTeam(cleanName);
         const prefix = team?.prefix || '';
         const suffix = team?.suffix || '';
         const displayName = prefix + cleanName + suffix;
-        
-        this.api.debugLog(`Flagging ${displayName} for ${checkName} (VL: ${vl})`);
 
-        const alertsEnabled = this.api.config.get(`checks.${checkName}.enabled`);
-        if (alertsEnabled) {
-            const message = `${this.api.getPrefix()} ${displayName} §7flagged §5${checkName} §8(§7VL: ${vl}§8)`;
-            this.api.chat(message);
+        const autoWdrEnabled = this.api.config.get(`checks.${checkName}.autoWdr`);
+        if (autoWdrEnabled) {
+            this.api.sendCommand(`/wdr ${cleanName} ${checkName}`);
+        }
+
+        const chat = this.api.createChat();
+        chat.text(`${this.api.getPrefix()} `).text(displayName).text(` §7flagged §5${checkName} §8(§7VL: ${vl}§8)`);
+        chat.button(' [WDR]', `/wdr ${cleanName} ${checkName}`, 'Report player for cheating', 'run_command', '§c');
+        
+        const urchin = this.api.getPluginInstance('urchin');
+        if (urchin) {
+            chat.button(' [Tag]', `/urchin tag ${cleanName} blatant_cheater ${checkName}`, 'Tag player in Urchin', 'suggest_command', '§5');
         }
         
+        chat.send();
+
         const soundEnabled = this.api.config.get(`checks.${checkName}.sound`);
         if (soundEnabled) {
             this.api.sound('note.pling');
