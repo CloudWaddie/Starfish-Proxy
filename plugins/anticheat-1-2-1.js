@@ -173,7 +173,7 @@ const flyCMinRepeatTicks = 10;
 const CHECKS = {
     FlyA: {
         config: {
-            enabled: true, sound: true, vl: 2, cooldown: 1000, autoWdr: false,
+            enabled: false, sound: true, vl: 2, cooldown: 1000, autoWdr: false,
             description: "Detects vertical motion stopping mid-air."
         },
         check: function(player, config) {
@@ -200,7 +200,7 @@ const CHECKS = {
 
     FlyB: {
         config: {
-            enabled: true, sound: true, vl: 1, cooldown: 1000, autoWdr: false,
+            enabled: false, sound: true, vl: 1, cooldown: 1000, autoWdr: false,
             description: "Detects swimming while not in water."
         },
         check: function(player, config) {
@@ -216,7 +216,7 @@ const CHECKS = {
 
     FlyC: {
         config: {
-            enabled: true, sound: true, vl: 10, cooldown: 2000, autoWdr: false,
+            enabled: false, sound: true, vl: 10, cooldown: 2000, autoWdr: false,
             description: "Detects constant vertical movement speed mid-air."
         },
         check: function(player, config) {
