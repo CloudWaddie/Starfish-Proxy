@@ -1081,20 +1081,25 @@ class AnticheatSystem {
     refreshConfigConstants() {
         this.CONFIG = {};
         for (const checkName of Object.keys(CHECKS)) {
-            this.CONFIG[checkName] = {
-                enabled: this.api.config.get(`checks.${checkName}.enabled`),
-                vl: this.api.config.get(`checks.${checkName}.vl`),
-                cooldown: this.api.config.get(`checks.${checkName}.cooldown`),
-                sound: this.api.config.get(`checks.${checkName}.sound`),
-                alertBuffer: this.api.config.get(`checks.${checkName}.alertBuffer`),
-                autoWdr: this.api.config.get(`checks.${checkName}.autoWdr`),
-                runCheckOnSelf: this.api.config.get(`checks.${checkName}.runCheckOnSelf`)
-            };
+            // Only load config for checks that are still defined in CHECKS
+            if (CHECKS[checkName]) {
+                this.CONFIG[checkName] = {
+                    enabled: this.api.config.get(`checks.${checkName}.enabled`),
+                    vl: this.api.config.get(`checks.${checkName}.vl`),
+                    cooldown: this.api.config.get(`checks.${checkName}.cooldown`),
+                    sound: this.api.config.get(`checks.${checkName}.sound`),
+                    alertBuffer: this.api.config.get(`checks.${checkName}.alertBuffer`),
+                    autoWdr: this.api.config.get(`checks.${checkName}.autoWdr`),
+                    runCheckOnSelf: this.api.config.get(`checks.${checkName}.runCheckOnSelf`)
+                };
+            }
         }
+        // GlobalAlerts config is removed from schema, but still referenced here.
+        // Ensure it doesn't cause errors if not found in config.
         this.CONFIG.globalAlerts = {
-            enabled: this.api.config.get('globalAlerts.enabled'),
-            threshold: this.api.config.get('globalAlerts.threshold'),
-            cooldown: this.api.config.get('globalAlerts.cooldown')
+            enabled: this.api.config.get('globalAlerts.enabled') ?? false, // Default to false if not found
+            threshold: this.api.config.get('globalAlerts.threshold') ?? 20,
+            cooldown: this.api.config.get('globalAlerts.cooldown') ?? 5000
         };
         this.CONFIG.globalRateLimit = {
             enabled: this.api.config.get('globalRateLimit.enabled'),

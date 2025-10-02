@@ -26,9 +26,33 @@ jobs:
     - name: Zip build directory
       run: powershell Compress-Archive -Path ./build -DestinationPath build.zip
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: build.zip
+    - name: Create Git Tag
+      id: create_tag
+      run: |
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git tag -a v${{ github.run_number }} -m "Release v${{ github.run_number }}"
+        git push origin v${{ github.run_number }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ github.run_number }}
+        release_name: Release v${{ github.run_number }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./build.zip
+        asset_name: build.zip
+        asset_content_type: application/zip
