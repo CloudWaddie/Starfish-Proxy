@@ -516,22 +516,6 @@ const CHECKS = {
         }
     },
 
-    SpeedC: {
-        config: {
-            enabled: true, sound: true, vl: 5, cooldown: 1000, autoWdr: false,
-            description: "Detects sprinting with no horizontal motion."
-        },
-        check: function(player, config) {
-            const horizontalSpeed = Math.sqrt(player.velocity.x * player.velocity.x + player.velocity.z * player.velocity.z);
-            if (player.isSprinting && horizontalSpeed === 0 && player.onGround) {
-                this.addViolation(player, 'SpeedC', 1);
-                if (this.shouldAlert(player, 'SpeedC', config)) {
-                    this.flag(player, 'SpeedC', player.violations.SpeedC);
-                    this.markAlert(player, 'SpeedC');
-                }
-            }
-        }
-    },
 
     AimA: {
         config: {
