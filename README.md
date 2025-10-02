@@ -267,7 +267,7 @@ The proxy enforces packet safety to maintain compatibility with Hypixel:
 
 - Created by Hexze
 - Special thanks to J0nahG for starting the project and assisting me, and to Desiyn and nilsraccoon for contributing to development.
-- Thanks to CloudWaddie for adding and tweaking a few things.
+- Thanks to CloudWaddie for adding and tweaking a few things and making a major change to the anticheat!
 ## Support
 
 For issues, questions, or suggestions:

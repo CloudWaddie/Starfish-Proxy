@@ -7,8 +7,8 @@ module.exports = (api) => {
         name: 'anticheat',
         displayName: 'Cheater Detector',
         prefix: '§cAC',
-        version: '0.2.1',
-        author: 'Hexze',
+        version: '1.2.1',
+        author: 'Hexze and CloudWaddie',
         description: 'Advanced cheater detector system (Inspired by github.com/PugrillaDev)',
         optionalDependencies: ['urchin']
     });
