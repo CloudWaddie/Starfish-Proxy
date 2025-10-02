@@ -140,7 +140,7 @@ module.exports = (api) => {
                     type: 'toggle',
                     key: 'tabListDisplay.enabled',
                     text: ['OFF', 'ON'],
-                    description: 'Shows player violation counts in the tab list.'
+                    description: 'Shows player alert counts in the tab list.'
                 }
             ]
         },
@@ -1966,7 +1966,7 @@ class AnticheatSystem {
             return;
         }
 
-        const totalViolations = Object.values(player.violations).reduce((a, b) => a + b, 0);
+        const totalAlerts = player.alertCountInWindow;
 
         // Clear previous suffix before adding a new one to prevent stacking
         if (this.playersWithSuffix.has(player.uuid)) {
@@ -1974,8 +1974,8 @@ class AnticheatSystem {
             this.playersWithSuffix.delete(player.uuid);
         }
 
-        if (totalViolations > 0) {
-            const suffix = ` §7[§c${totalViolations}§7]`;
+        if (totalAlerts > 0) {
+            const suffix = ` §7[§c${totalAlerts}§7]`;
             this.api.appendDisplayNameSuffix(player.uuid, suffix);
             this.playersWithSuffix.add(player.uuid);
         }
