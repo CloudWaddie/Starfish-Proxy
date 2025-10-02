@@ -43,7 +43,7 @@ module.exports = (api) => {
                     key: `checks.${checkName}.runCheckOnSelf`,
                     text: ['OFF', 'ON'],
                     description: `Runs this check on your own player.`,
-                    condition: (cfg) => cfg.checks[checkName].enabled && (checkName === 'HighJump' || checkName === 'SpeedA'),
+                    condition: (cfg) => cfg.checks[checkName].enabled && (checkName === 'HungerSprint'),
                 },
                 {
                     type: 'soundToggle',
@@ -97,42 +97,6 @@ module.exports = (api) => {
     api.initializeConfig(configSchema);
     api.configSchema([
         {
-            label: 'Global Alert Settings',
-            defaults: { globalAlerts: { enabled: true, threshold: 20, cooldown: 5000 } },
-            settings: [
-                {
-                    type: 'toggle',
-                    key: 'globalAlerts.enabled',
-                    text: ['OFF', 'ON'],
-                    description: 'Enables the global violation system to reduce alert spam.'
-                },
-                {
-                    type: 'cycle',
-                    key: 'globalAlerts.threshold',
-                    values: [
-                        { text: 'VL: 10', value: 10 },
-                        { text: 'VL: 20', value: 20 },
-                        { text: 'VL: 30', value: 30 },
-                        { text: 'VL: 50', value: 50 }
-                    ],
-                    condition: (cfg) => cfg.globalAlerts.enabled,
-                    description: 'Sets the total violation level across all checks to trigger a global alert.'
-                },
-                {
-                    type: 'cycle',
-                    key: 'globalAlerts.cooldown',
-                    values: [
-                        { text: 'CD: 5s', value: 5000 },
-                        { text: 'CD: 10s', value: 10000 },
-                        { text: 'CD: 30s', value: 30000 },
-                        { text: 'CD: 60s', value: 60000 }
-                    ],
-                    condition: (cfg) => cfg.globalAlerts.enabled,
-                    description: 'Sets the cooldown between global alerts for a player.'
-                }
-            ]
-        },
-        {
             label: 'Global Rate Limiting',
             defaults: { globalRateLimit: { enabled: true, maxAlerts: 20, timeWindow: 300000 } },
             settings: [
@@ -185,6 +149,12 @@ module.exports = (api) => {
     
     anticheat.registerHandlers();
     anticheat.registerCommands();
+
+    api.on('config_change', (event) => {
+        if (event.plugin === 'anticheat') {
+            anticheat.refreshConfigConstants();
+        }
+    });
 
     return {
         enable: () => {
@@ -267,57 +237,6 @@ const CHECKS = {
                 }
             } else {
                 player.flyC.repeatTicks = 0;
-            }
-        }
-    },
-
-    HighJump: {
-        config: {
-            enabled: true, sound: true, vl: 5, cooldown: 2000, autoWdr: false, runCheckOnSelf: false, threshold: 0.2,
-            description: "Detects jumping higher than allowed by effects."
-        },
-        check: function(player, config) {
-            if (player.isCurrentPlayer && !config.runCheckOnSelf) return;
-
-            // --- START: NEW BYPASSES ---
-            // Add bypasses for elytra, riding entities, and active hurt animation.
-            if (player.isElytraFlying || player.isPassenger || player.hurtTime > 0) {
-                player.flaggedInJump = false; // Reset flag during bypass conditions
-                return;
-            }
-            // --- END: NEW BYPASSES ---
-
-            const getJumpHeight = (level) => {
-                const x = level;
-                if (x > 0) {
-                    return 0.04837 * x * x + 0.5356 * x + 1.252;
-                }
-                return 1.252203340253729;
-            };
-
-            if (player.onGround) {
-                player.lastOnGroundY = player.position.y;
-                player.highestY = player.position.y;
-                player.flaggedInJump = false;
-            } else {
-                // Only check if the player was on ground last tick (i.e., this is a jump)
-                if (player.lastOnGround && player.velocity.y > 0) {
-                    player.lastOnGroundY = player.lastPosition.y;
-                }
-
-                player.highestY = Math.max(player.highestY, player.position.y);
-
-                const jumpDistance = player.highestY - player.lastOnGroundY;
-                const possibleDistance = getJumpHeight(player.jumpBoostLevel) + (config.threshold || 0.2);
-
-                if (jumpDistance > possibleDistance && !player.flaggedInJump) {
-                    this.addViolation(player, 'HighJump', 1);
-                    if (this.shouldAlert(player, 'HighJump', config)) {
-                        this.flag(player, 'HighJump', player.violations.HighJump);
-                        this.markAlert(player, 'HighJump');
-                        player.flaggedInJump = true;
-                    }
-                }
             }
         }
     },
@@ -556,7 +475,7 @@ const CHECKS = {
         },
         check: function(player, config) {
             const timeSinceTeleport = Date.now() - player.lastTeleportTime;
-            if (timeSinceTeleport < 1000) { // Bypass for 1 second after a teleport
+            if (timeSinceTeleport < 2000) { // Bypass for 2 seconds after a teleport (Safer for large TPs/lag)
                 return;
             }
             
@@ -581,70 +500,17 @@ const CHECKS = {
     },
 
 
-    SpeedA: {
-        config: {
-            enabled: true, sound: true, vl: 5, cooldown: 1000, autoWdr: false, runCheckOnSelf: false,
-            description: "Detects moving faster than the legitimate maximum speed."
-        },
-        check: function(player, config) {
-            if (player.isCurrentPlayer && !config.runCheckOnSelf) return;
-
-            // ADD THIS BYPASS: If the player is in their hurt animation, do not run the speed check.
-            if (player.hurtTime > 0) {
-                return;
-            }
-
-            const recentlyBoosted = (Date.now() - player.lastVelocityPacketTime) < 2000;
-            if (recentlyBoosted) return;
-
-            if (!player.onGround) {
-                if (player.lastOnGround) { // This means the player just jumped
-                    player.jumpTick = 10; // Allow high speed for 10 ticks
-                }
-                return; // Don't run the rest of the speed check in the air
-            }
-
-            const deltaX = player.position.x - player.lastPosition.x;
-            const deltaZ = player.position.z - player.lastPosition.z;
-            const horizontalSpeed = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ) * 20;
-
-            const speedMul = 1.0 + (player.speedLevel * 0.2);
-            let maxSpeed;
-
-            if (player.jumpTick > 0) {
-                maxSpeed = 7.4;
-                player.jumpTick--; // Decrement the counter each tick
-            } else if (player.isSprinting) {
-                maxSpeed = 5.612;
-            } else if (player.isCrouching) {
-                maxSpeed = 1.295;
-            } else {
-                maxSpeed = 4.317;
-            }
-
-            const possibleSpeed = (maxSpeed * speedMul) + 2.5;
-
-            if (horizontalSpeed > possibleSpeed) {
-                this.addViolation(player, 'SpeedA', 1);
-                if (this.shouldAlert(player, 'SpeedA', config)) {
-                    this.flag(player, 'SpeedA', player.violations.SpeedA);
-                    this.markAlert(player, 'SpeedA');
-                }
-            }
-        }
-    },
-
-    SpeedB: {
+    HungerSprint: {
         config: {
             enabled: true, sound: true, vl: 2, cooldown: 1000, autoWdr: false,
             description: "Detects sprinting with low hunger."
         },
         check: function(player, config) {
             if (player.isSprinting && player.hunger <= 6) {
-                this.addViolation(player, 'SpeedB', 1);
-                if (this.shouldAlert(player, 'SpeedB', config)) {
-                    this.flag(player, 'SpeedB', player.violations.SpeedB);
-                    this.markAlert(player, 'SpeedB');
+                this.addViolation(player, 'HungerSprint', 1);
+                if (this.shouldAlert(player, 'HungerSprint', config)) {
+                    this.flag(player, 'HungerSprint', player.violations.HungerSprint);
+                    this.markAlert(player, 'HungerSprint');
                 }
             }
         }
@@ -1033,8 +899,7 @@ class PlayerData {
         this.hasSlowFalling = false;
         this.hurtTime = 0;
         this.latency = 0;
-        this.jumpTick = 0;
-        this.lastTeleportTime = 0;
+        this.lastTeleportTime = Date.now();
         this.gameMode = -1; // -1: unknown, 0: survival, 1: creative, 2: adventure, 3: spectator
 
         this.strafeA = {
@@ -1195,6 +1060,22 @@ class AnticheatSystem {
         this.uuidToDisplayName.clear();
         this.startGracePeriod();
         this.api.debugLog('Cleared all tracked player data and started grace period.');
+    }
+
+    flushViolations() {
+        for (const player of this.playersByUuid.values()) {
+            for (const checkName of Object.keys(CHECKS)) {
+                if (player.violations[checkName] !== undefined) {
+                    player.violations[checkName] = 0;
+                }
+                if (player.lastAlerts[checkName] !== undefined) {
+                    player.lastAlerts[checkName] = 0;
+                }
+            }
+            player.globalViolations = 0;
+            player.lastGlobalAlertTime = 0;
+            this.updateTabList(player);
+        }
     }
     
     refreshConfigConstants() {
@@ -2182,6 +2063,13 @@ class AnticheatSystem {
                     } else {
                         ctx.sendError('Player not found or no data for this session.');
                     }
+                });
+
+            registry.command('flush')
+                .description('Clears all violation data for all players in the current session.')
+                .handler((ctx) => {
+                    this.flushViolations();
+                    ctx.sendSuccess('All violation data has been cleared.');
                 });
         });
     }

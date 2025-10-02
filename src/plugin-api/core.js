@@ -80,6 +80,14 @@ class Core {
                     if (key === 'enabled') this.enabled = value;
                     if (key === 'debug') this.debug = value;
                     
+                    if (this.proxy.pluginAPI && typeof this.proxy.pluginAPI.emit === 'function') {
+                        this.proxy.pluginAPI.emit('config_change', {
+                            plugin: this.metadata.name,
+                            key: key,
+                            value: value
+                        });
+                    }
+
                     return true;
                 } catch (e) {
                     this.log(`Failed to save config: ${e.message}`);
@@ -99,6 +107,14 @@ class Core {
                     this._setNestedValue(current, key, valueToStore);
                     fs.writeFileSync(configPath, JSON.stringify(current, null, 2));
                     
+                    if (this.proxy.pluginAPI && typeof this.proxy.pluginAPI.emit === 'function') {
+                        this.proxy.pluginAPI.emit('config_change', {
+                            plugin: this.metadata.name,
+                            key: key,
+                            value: value // Note: emitting unencrypted value
+                        });
+                    }
+
                     return true;
                 } catch (e) {
                     this.log(`Failed to save encrypted config: ${e.message}`);
@@ -279,4 +295,4 @@ class Core {
     }
 }
 
-module.exports = Core; 
+module.exports = Core;

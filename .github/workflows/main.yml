@@ -2,9 +2,8 @@ name: Build Project
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches:
+      - master
 
 jobs:
   build:
@@ -27,8 +26,9 @@ jobs:
     - name: Zip build directory
       run: powershell Compress-Archive -Path ./build -DestinationPath build.zip
 
-    - name: Upload build artifact
-      uses: actions/upload-artifact@v3
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
       with:
-        name: starfish-proxy-build
-        path: build.zip
+        files: build.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -207,9 +207,8 @@ class MinecraftProxy extends EventEmitter {
                 .description('List loaded plugins')
                 .handler((ctx) => this.handlePluginsCommand(ctx));
             
-            command('reloadplugin')
-                .description('Reload a plugin')
-                .argument('pluginName')
+            command('reloadplugins')
+                .description('Reload all plugins')
                 .handler((ctx) => this.handleReloadPluginCommand(ctx));
 
             command('ws')
@@ -411,19 +410,12 @@ class MinecraftProxy extends EventEmitter {
     }
 
     async handleReloadPluginCommand(ctx) {
-        const { pluginName } = ctx.args;
-        if (!pluginName) {
-            return ctx.sendError('Please specify a plugin to reload.');
-        }
-
-        ctx.send(`Reloading plugin '${pluginName}'...`);
-
-        const result = await this.pluginAPI.reloadPlugin(pluginName);
-
-        if (result.success) {
-            ctx.sendSuccess(result.message);
-        } else {
-            ctx.sendError(`Failed to reload '${pluginName}': ${result.reason}`);
+        ctx.send('Reloading all plugins...');
+        try {
+            await this.pluginAPI.reloadPlugins();
+            ctx.sendSuccess('All plugins have been reloaded.');
+        } catch (error) {
+            ctx.sendError(`Failed to reload plugins: ${error.message}`);
         }
     }
 
