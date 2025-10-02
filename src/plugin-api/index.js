@@ -157,6 +157,42 @@ class PluginAPI {
         this.sendScoreboardScore = this.miscModule.sendScoreboardScore.bind(this.miscModule);
         this.sendScoreboardDisplay = this.miscModule.sendScoreboardDisplay.bind(this.miscModule);
         this.sendScoreboardTeam = this.miscModule.sendScoreboardTeam.bind(this.miscModule);
+
+        this.watchers = new Map();
+    }
+
+    watchPlugins() {
+        const pluginsDir = getPluginsDir();
+        if (!fs.existsSync(pluginsDir)) return;
+
+        fs.watch(pluginsDir, { recursive: true }, (eventType, filename) => {
+            if (filename && filename.endsWith('.js')) {
+                console.log(`Plugin file changed: ${filename}. Reloading all plugins.`);
+                this.reloadPlugins();
+            }
+        });
+    }
+
+    async reloadPlugins() {
+        // Cleanup existing plugins
+        for (const [pluginName, instance] of this.pluginInstances) {
+            if (instance && typeof instance.disable === 'function') {
+                instance.disable();
+            }
+        }
+        this.loadedPlugins = [];
+        this.pluginStates.clear();
+        this.pluginInstances.clear();
+        this.dependencyResolver.clear();
+
+        // Unregister all event listeners and interceptors from plugins
+        this.events.unregisterAll();
+
+        // Reload plugins
+        await this.loadPlugins();
+
+        // Re-register core events
+        this.proxy.registerCoreEvents();
     }
     
     setPluginEnabled(pluginName, enabled) {
@@ -597,6 +633,8 @@ class PluginAPI {
         } else {
             console.log('No plugins loaded');
         }
+
+        this.watchPlugins();
     }
     
     createMetadataOnlyWrapper(pluginMetadata) {
@@ -835,6 +873,7 @@ class PluginAPI {
             getPlayerTeam: withEnabledCheck(mainAPI.getPlayerTeam, 'getPlayerTeam'),
             
             // communication methods
+            chatInteractive: withEnabledCheck(mainAPI.chatInteractive, 'chatInteractive'),
             sendTitle: withEnabledCheck(mainAPI.sendTitle, 'sendTitle'),
             sendActionBar: withEnabledCheck(mainAPI.sendActionBar, 'sendActionBar'),
             sendParticle: withEnabledCheck(mainAPI.sendParticle, 'sendParticle'),
@@ -963,7 +1002,10 @@ class PluginAPI {
             
             getPluginInstance: (targetPluginName) => {
                 const dependencies = pluginMetadata.dependencies || [];
-                const hasDependency = dependencies.some(dep => {
+                const optionalDependencies = pluginMetadata.optionalDependencies || [];
+                const allDependencies = [...dependencies, ...optionalDependencies];
+
+                const hasDependency = allDependencies.some(dep => {
                     const depName = typeof dep === 'string' ? dep : dep.name;
                     return depName === targetPluginName;
                 });
@@ -1039,4 +1081,4 @@ class PluginAPI {
     }
 }
 
-module.exports = PluginAPI; 
+module.exports = PluginAPI;

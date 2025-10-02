@@ -5,6 +5,11 @@ class DependencyResolver {
         this.plugins = new Map();
         this.dependencyGraph = new Map();
     }
+
+    clear() {
+        this.plugins.clear();
+        this.dependencyGraph.clear();
+    }
     
     addPlugin(pluginMetadata) {
         this.plugins.set(pluginMetadata.name, pluginMetadata);

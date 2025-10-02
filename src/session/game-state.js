@@ -41,6 +41,7 @@ class GameState {
         this.lastPosition = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
         this.health = 20;
         this.inventory = { slots: new Array(45).fill({"blockId":-1}), cursorItem: {"blockId":-1}, heldItemSlot: 0 };
+        this.chunks = new Map();
     }
 
     updateFromPacket(meta, data, fromServer) {
@@ -161,7 +162,32 @@ class GameState {
             case 'scoreboard_score':
                 this.miscHandler.handleScore(data);
                 break;
+            case 'map_chunk':
+                this.handleChunk(data);
+                break;
         }
+    }
+
+    handleChunk(data) {
+        const chunkX = data.x;
+        const chunkZ = data.z;
+        const chunkKey = `${chunkX},${chunkZ}`;
+        this.chunks.set(chunkKey, data.chunk);
+    }
+
+    getBlock(x, y, z) {
+        const chunkX = Math.floor(x / 16);
+        const chunkZ = Math.floor(z / 16);
+        const chunkKey = `${chunkX},${chunkZ}`;
+
+        const chunk = this.chunks.get(chunkKey);
+        if (!chunk) return null;
+
+        const blockX = x & 15;
+        const blockY = y;
+        const blockZ = z & 15;
+
+        return chunk.get(blockX, blockY, blockZ);
     }
 
     getPlayerByName(name) {

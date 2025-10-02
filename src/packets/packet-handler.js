@@ -69,6 +69,13 @@ class PacketHandler {
 
     async processPacket(session, direction, data, meta) {
         if (!this.loaded) this.initialize();
+
+        if (meta.name === 'chat') {
+            session.proxy.emit('chat', {
+                direction: direction,
+                message: data.message
+            });
+        }
         
         const definition = this.definitions.get(direction)?.get(meta.name);
         const isSafe = this.safePackets.get(direction)?.has(meta.name) || false;

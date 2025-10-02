@@ -253,6 +253,13 @@ class Events extends EventEmitter {
         const restrictedSet = this.restrictedPackets[direction];
         return !restrictedSet.has(packetName);
     }
+
+    unregisterAll() {
+        this.eventHandlers.clear();
+        this.packetInterceptors.get('server').clear();
+        this.packetInterceptors.get('client').clear();
+        this.core.debugLog('Unregistered all plugin event handlers and packet interceptors.');
+    }
 }
 
-module.exports = Events; 
+module.exports = Events;

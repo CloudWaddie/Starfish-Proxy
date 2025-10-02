@@ -335,11 +335,11 @@ class UrchinPlugin {
                     color: "white",
                     clickEvent: {
                         action: "suggest_command",
-                        value: `${nickName} (${realName})`
+                        value: `/wdr ${realName}`
                     },
                     hoverEvent: {
                         action: "show_text",
-                        value: { text: "§8Click to put names in chat" }
+                        value: { text: "§8Click to /wdr player" }
                     }
                 },
                 ...tagComponents
@@ -701,11 +701,11 @@ class UrchinPlugin {
                     color: "white",
                     clickEvent: {
                         action: "suggest_command",
-                        value: username
+                        value: `/wdr ${username}`
                     },
                     hoverEvent: {
                         action: "show_text",
-                        value: { text: "§8Click to put username in chat" }
+                        value: { text: "§8Click to /wdr player" }
                     }
                 },
                 ...tagComponents

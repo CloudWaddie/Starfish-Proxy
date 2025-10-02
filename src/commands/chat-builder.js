@@ -69,13 +69,32 @@ class ChatBuilder {
         return this.text(' ');
     }
 
+    onClick(action, value) {
+        this._clickEvent = { action, value };
+        return this;
+    }
+
+    onHover(text) {
+        this._hoverEvent = { action: 'show_text', value: { text: `${THEME.muted}${text}` } };
+        return this;
+    }
+
     send() {
-        const message = JSON.stringify({
+        const messagePayload = {
             text: '',
             extra: this._components
-        });
+        };
+
+        if (this._clickEvent) {
+            messagePayload.clickEvent = this._clickEvent;
+        }
+        if (this._hoverEvent) {
+            messagePayload.hoverEvent = this._hoverEvent;
+        }
+
+        const message = JSON.stringify(messagePayload);
         this.commandHandler.proxy.sendMessage(this.client, message);
     }
 }
 
-module.exports = ChatBuilder; 
+module.exports = ChatBuilder;

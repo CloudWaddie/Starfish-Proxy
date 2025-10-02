@@ -40,6 +40,11 @@ class World {
             players: Array.from(teamData.players)
         };
     }
+
+    getBlock(x, y, z) {
+        if (!this.gameState) return null;
+        return this.gameState.getBlock(x, y, z);
+    }
     
     sendExplosion(x, y, z, radius, records = [], playerMotionX = 0, playerMotionY = 0, playerMotionZ = 0) {
         if (!this.core.isHypixelSafe('sendExplosion')) {
@@ -229,4 +234,4 @@ class World {
     }
 }
 
-module.exports = World; 
+module.exports = World;

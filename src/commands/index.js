@@ -39,6 +39,13 @@ class CommandHandler {
         this.modules.set(normalizedModuleName, moduleCommand);
     }
     
+    unregister(moduleName) {
+        const normalizedModuleName = moduleName.toLowerCase();
+        if (this.modules.has(normalizedModuleName)) {
+            this.modules.delete(normalizedModuleName);
+        }
+    }
+    
     _addAutoConfigCommand(moduleCommand, moduleName) {
         const { Option } = require('commander');
         

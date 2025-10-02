@@ -1,11 +1,13 @@
 const mc = require('minecraft-protocol');
 const path = require('path');
 const fs = require('fs');
+const { EventEmitter } = require('events');
 const { PlayerSession } = require('./session');
 const { CommandHandler } = require('./commands');
 const PluginAPI = require('./plugin-api');
 const { Storage } = require('./storage');
 const { getBaseDir } = require('./utils/paths');
+const WebSocket = require('ws');
 
 const packageJson = require('../package.json');
 const STARFISH_VERSION = packageJson.version;
@@ -14,8 +16,9 @@ const MINECRAFT_VERSION = '1.8.9';
 const PROXY_PORT = 25565;
 const PROXY_PREFIX = '§6S§eta§fr§bfi§3sh§r';
 
-class MinecraftProxy {
+class MinecraftProxy extends EventEmitter {
     constructor() {
+        super();
         this.PROXY_PREFIX = PROXY_PREFIX;
         this.storage = new Storage();
         this.config = this.storage.loadConfig();
@@ -25,6 +28,7 @@ class MinecraftProxy {
         this.server = null;
         this.currentPlayer = null;
         this.loginAttempts = new Map();
+        this.wss = null;
         
         this.initializeProxy().catch(console.error);
     }
@@ -41,6 +45,39 @@ class MinecraftProxy {
         this.registerProxyCommands();
         await this.pluginAPI.loadPlugins();
         this.createServer();
+        if (this.config.ws && this.config.ws.enabled) {
+            this.initializeWebSocket();
+        }
+    }
+    
+    initializeWebSocket() {
+        if (this.wss) {
+            this.wss.close();
+        }
+        
+        const port = this.config.ws.port || 8080;
+        this.wss = new WebSocket.Server({ port });
+        
+        this.wss.on('listening', () => {
+            console.log(`WebSocket server listening on port ${port}`);
+        });
+
+        this.wss.on('connection', (ws) => {
+            console.log('WebSocket client connected');
+            ws.on('close', () => {
+                console.log('WebSocket client disconnected');
+            });
+        });
+    }
+
+    broadcast(event, data) {
+        if (!this.wss) return;
+        const message = JSON.stringify({ event, data });
+        this.wss.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(message);
+            }
+        });
     }
     
     createServer() {
@@ -58,11 +95,15 @@ class MinecraftProxy {
             }
         });
         
+        this.registerCoreEvents();
+    }
+
+    registerCoreEvents() {
         this.server.on('login', (client) => this.handleLogin(client));
         this.server.on('listening', () => {
             console.log(`Proxy server listening on port ${this.config.proxyPort || PROXY_PORT}`);
             console.log(`Target server: ${this.getTargetDisplay()}`);
-                });
+        });
     }
     
     handleLogin(client) {
@@ -76,9 +117,12 @@ class MinecraftProxy {
             return;
                     }
         
+        this.broadcast('player:connect', { username: client.username });
+
         client.on('end', () => {
             console.log(`${client.username} disconnected`);
             if (this.currentPlayer) {
+                this.broadcast('player:disconnect', { username: this.currentPlayer.username });
                 this.currentPlayer.disconnect('Client disconnected from proxy.');
                 this.currentPlayer = null;
             }
@@ -162,7 +206,39 @@ class MinecraftProxy {
             command('plugins')
                 .description('List loaded plugins')
                 .handler((ctx) => this.handlePluginsCommand(ctx));
+            
+            command('reloadplugin')
+                .description('Reload a plugin')
+                .argument('pluginName')
+                .handler((ctx) => this.handleReloadPluginCommand(ctx));
+
+            command('ws')
+                .description('Toggle WebSocket server')
+                .argument('state', { choices: ['on', 'off'] })
+                .handler((ctx) => this.handleWsCommand(ctx));
         });
+    }
+
+    handleWsCommand(ctx) {
+        const { state } = ctx.args;
+        const enabled = state === 'on';
+
+        if (!this.config.ws) {
+            this.config.ws = {};
+        }
+        this.config.ws.enabled = enabled;
+        this.storage.saveConfig(this.config);
+
+        if (enabled) {
+            this.initializeWebSocket();
+            ctx.sendSuccess('WebSocket server enabled.');
+        } else {
+            if (this.wss) {
+                this.wss.close();
+                this.wss = null;
+            }
+            ctx.sendSuccess('WebSocket server disabled.');
+        }
     }
     
     handleServerCommand(ctx) {
@@ -332,6 +408,23 @@ class MinecraftProxy {
         
         chat.text('§m-----------------------------------------------------§r', ctx.THEME.muted);
         chat.send();
+    }
+
+    async handleReloadPluginCommand(ctx) {
+        const { pluginName } = ctx.args;
+        if (!pluginName) {
+            return ctx.sendError('Please specify a plugin to reload.');
+        }
+
+        ctx.send(`Reloading plugin '${pluginName}'...`);
+
+        const result = await this.pluginAPI.reloadPlugin(pluginName);
+
+        if (result.success) {
+            ctx.sendSuccess(result.message);
+        } else {
+            ctx.sendError(`Failed to reload '${pluginName}': ${result.reason}`);
+        }
     }
 
     switchServer(target, ctx = null) {
