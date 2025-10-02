@@ -1673,7 +1673,7 @@ class AnticheatSystem {
         const autoWdrEnabled = this.api.config.get(`checks.${checkName}.autoWdr`);
         if (autoWdrEnabled) {
             const cleanName = player.username || player.name || player.displayName?.replace(/§./g, '') || 'Unknown';
-            this.api.sendCommand(`/wdr ${cleanName} ${checkName}`);
+            this.api.sendCommand(`/wdr ${cleanName}`);
         }
     }
 
@@ -1705,7 +1705,7 @@ class AnticheatSystem {
             return current[1] > top[1] ? current : top;
         }, ["", 0]);
 
-        const wdrCommand = `/wdr ${cleanName} ${topCheck[0] || 'Cheating'}`;
+        const wdrCommand = `/wdr ${cleanName}`;
 
         const components = [
             { text: `${this.api.getPrefix()} ` },
@@ -1727,7 +1727,7 @@ class AnticheatSystem {
         const suffix = team?.suffix || '';
         const displayName = prefix + cleanName + suffix;
 
-        const wdrCommand = `/wdr ${cleanName} ${checkName}`;
+        const wdrCommand = `/wdr ${cleanName}`;
         
         const components = [
             { text: `${this.api.getPrefix()} ` },
