@@ -15,13 +15,13 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: '18'
+        node-version: '23'
 
     - name: Install dependencies
       run: npm install
 
     - name: Run build script
-      run: node build.js
+      run: npm run build
 
     - name: Zip build directory
       run: powershell Compress-Archive -Path ./build -DestinationPath build.zip

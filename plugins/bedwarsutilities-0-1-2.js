@@ -101,7 +101,7 @@ class BedwarsWho {
         const cleanMessage = message.replace(/§[0-9a-fk-or]/g, '').trim();
         const startText = 'Protect your bed and destroy the enemy beds.';
 
-        return cleanMessage === startText;
+        return cleanMessage.includes(startText);
     }
 
     handleGameStart() {
