@@ -40,6 +40,21 @@ module.exports = (api) => {
                     ]
                 }
             ]
+        },
+        {
+            label: 'Anticheat Integration',
+            description: 'Configure integration with the Anticheat plugin.',
+            defaults: {
+                autoFlushAnticheatViolationsOnGameStart: false
+            },
+            settings: [
+                {
+                    type: 'toggle',
+                    key: 'autoFlushAnticheatViolationsOnGameStart',
+                    text: ['OFF', 'ON'],
+                    description: 'Automatically flush Anticheat violations when a Bedwars game starts.'
+                }
+            ]
         }
     ];
 
@@ -97,9 +112,20 @@ class BedwarsWho {
         this.gameStarted = true;
         
         const delay = this.api.config.get('delay');
+        const autoFlushAnticheat = this.api.config.get('anticheatIntegration.autoFlushAnticheatViolationsOnGameStart');
         
         setTimeout(() => {
             this.runWhoCommand();
+
+            if (autoFlushAnticheat) {
+                const anticheatPlugin = this.api.getPluginInstance('anticheat');
+                if (anticheatPlugin && typeof anticheatPlugin.flushViolations === 'function') {
+                    anticheatPlugin.flushViolations();
+                    this.api.sendChatMessage(`${this.PLUGIN_PREFIX} §aAnticheat violations flushed.`);
+                } else {
+                    this.api.sendErrorMessage(`${this.PLUGIN_PREFIX} Anticheat plugin not found or flushViolations method is missing.`);
+                }
+            }
         }, delay);
     }
 

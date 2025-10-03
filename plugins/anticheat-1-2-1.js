@@ -243,7 +243,7 @@ const CHECKS = {
 
     NoSlowA: {
         config: {
-            enabled: true, sound: true, vl: 10, cooldown: 2000, autoWdr: false,
+            enabled: true, sound: true, vl: 20, cooldown: 2000, autoWdr: false,
             description: "Detects moving too fast while using items that should slow you down."
         },
         check: function(player, config) {
@@ -289,7 +289,7 @@ const CHECKS = {
     
     AutoBlockA: {
         config: {
-            enabled: true, sound: true, vl: 10, cooldown: 2000, autoWdr: false,
+            enabled: true, sound: true, vl: 20, cooldown: 2000, autoWdr: false,
             description: "Detects attacking while blocking with a sword."
         },
         check: function(player, config) {
@@ -299,7 +299,7 @@ const CHECKS = {
     
     EagleA: {
         config: { 
-            enabled: true, sound: true, vl: 5, cooldown: 2000, autoWdr: false,
+            enabled: true, sound: true, vl: 10, cooldown: 2000, autoWdr: false,
             description: "Detects diagonal double-shifting eagle (legit scaffold) patterns." 
         },
 
@@ -344,7 +344,7 @@ const CHECKS = {
     
     FastBridgeA: {
         config: {
-            enabled: true, sound: true, vl: 15, cooldown: 2000, autoWdr: false,
+            enabled: true, sound: true, vl: 25, cooldown: 2000, autoWdr: false,
             description: "Detects fast flat scaffold with no vertical movement (formerly ScaffoldA)."
         },
         check: function(player, config) {
@@ -379,7 +379,7 @@ const CHECKS = {
 
     ScaffoldA: {
         config: {
-            enabled: true, sound: true, vl: 5, cooldown: 1000, autoWdr: false,
+            enabled: true, sound: true, vl: 10, cooldown: 1000, autoWdr: false,
             description: "Detects placing blocks without a corresponding swing animation."
         },
         check: function(player, config) {
@@ -470,12 +470,18 @@ const CHECKS = {
 
     Blink: {
         config: {
-            enabled: true, sound: true, vl: 2, cooldown: 1000, autoWdr: false,
+            enabled: true, sound: true, vl: 7, cooldown: 1000, autoWdr: false,
             description: "Detects player teleporting by holding movement packets."
         },
         check: function(player, config) {
             const timeSinceTeleport = Date.now() - player.lastTeleportTime;
-            if (timeSinceTeleport < 2000) { // Bypass for 2 seconds after a teleport (Safer for large TPs/lag)
+            if (player.gameMode === 3) { // 3 is Spectator Mode
+                // Keep the teleport flag active as long as they are spectating.
+                // This ensures the grace period starts fresh when they actually respawn/move out of spectator.
+                player.lastTeleportTime = Date.now();
+                return;
+            }
+            if (timeSinceTeleport < 3000) { // Bypass for 3 seconds after a teleport (Safer for large TPs/lag/respawn)
                 return;
             }
             
@@ -502,7 +508,7 @@ const CHECKS = {
 
     HungerSprint: {
         config: {
-            enabled: true, sound: true, vl: 2, cooldown: 1000, autoWdr: false,
+            enabled: true, sound: true, vl: 7, cooldown: 1000, autoWdr: false,
             description: "Detects sprinting with low hunger."
         },
         check: function(player, config) {
@@ -519,7 +525,7 @@ const CHECKS = {
 
     AimA: {
         config: {
-            enabled: true, sound: true, vl: 5, cooldown: 1000, autoWdr: false,
+            enabled: true, sound: true, vl: 10, cooldown: 1000, autoWdr: false,
             description: "Analyzes rotation for unnaturally smooth or precise movements."
         },
         check: function(player, config) {
@@ -571,10 +577,15 @@ const CHECKS = {
 
     AimB: {
         config: {
-            enabled: true, sound: true, vl: 3, cooldown: 1000, autoWdr: false,
+            enabled: true, sound: true, vl: 8, cooldown: 1000, autoWdr: false,
             description: "Identifies suspiciously perfect and instantaneous changes in viewing angle."
         },
         check: function(player, config) {
+            const timeSinceTeleport = Date.now() - player.lastTeleportTime;
+            if (timeSinceTeleport < 3000) { // Use 3000ms or higher for safety
+                return;
+            }
+
             if (player.lastYaw === null || player.lastPitch === null) return;
 
             const deltaYaw = Math.abs(player.yaw - player.lastYaw);
@@ -582,7 +593,7 @@ const CHECKS = {
 
             const YAW_STEPS = [90, 135, 180];
             const PITCH_STEPS = [90, 135];
-            const MIN_DIFF = 2.0;
+            const MIN_DIFF = 3.0; // Increased tolerance from 2.0 to 3.0
 
             let flagged = false;
             for (const step of YAW_STEPS) {
@@ -612,7 +623,7 @@ const CHECKS = {
 
     InvalidPitch: {
         config: {
-            enabled: true, sound: true, vl: 1, cooldown: 1000, autoWdr: false,
+            enabled: true, sound: true, vl: 6, cooldown: 1000, autoWdr: false,
             description: "Flags players whose pitch (vertical viewing angle) exceeds the normal in-game limits."
         },
         check: function(player, config) {
@@ -628,7 +639,7 @@ const CHECKS = {
 
     HitBoxA: {
         config: {
-            enabled: true, sound: true, vl: 5, cooldown: 1000, autoWdr: false,
+            enabled: true, sound: true, vl: 10, cooldown: 1000, autoWdr: false,
             description: "Detects enlarging hitboxes to hit players more easily."
         },
         check: function(player, config) {
@@ -638,7 +649,7 @@ const CHECKS = {
 
     ReachA: {
         config: {
-            enabled: true, sound: true, vl: 5, cooldown: 1000, autoWdr: false,
+            enabled: true, sound: true, vl: 10, cooldown: 1000, autoWdr: false,
             description: "Detects attacking entities from an impossible distance."
         },
         check: function(player, config) {
@@ -648,7 +659,7 @@ const CHECKS = {
 
     GameModeA: {
         config: {
-            enabled: true, sound: true, vl: 1, cooldown: 1000, autoWdr: false, alertBuffer: 1,
+            enabled: true, sound: true, vl: 6, cooldown: 1000, autoWdr: false, alertBuffer: 1,
             description: "Identifies players who illegitimately switch their game mode."
         },
         check: function(player, config) {
@@ -658,7 +669,7 @@ const CHECKS = {
 
     StrafeA: {
         config: {
-            enabled: true, sound: true, vl: 5, cooldown: 1000, autoWdr: false,
+            enabled: true, sound: true, vl: 10, cooldown: 1000, autoWdr: false,
             description: "Detects players who are using a 'strafe' cheat to move in the air with perfect control."
         },
         check: function(player, config) {
@@ -711,7 +722,7 @@ const CHECKS = {
 
     VelocityA: {
         config: {
-            enabled: true, sound: true, vl: 2, cooldown: 1000, autoWdr: false, alertBuffer: 2,
+            enabled: true, sound: true, vl: 7, cooldown: 1000, autoWdr: false, alertBuffer: 2,
             description: "Detects players illegitimately reducing or negating knockback."
         },
         check: function(player, config) {
@@ -1058,6 +1069,8 @@ class AnticheatSystem {
             }
             player.globalViolations = 0;
             player.lastGlobalAlertTime = 0;
+            player.alertCountInWindow = 0; // Reset alert count for tab list
+            player.alertWindowStartTime = 0; // Reset alert window start time
             this.updateTabList(player);
         }
     }
@@ -1876,17 +1889,19 @@ class AnticheatSystem {
 
     incrementAlertCount(player) {
         const config = this.CONFIG.globalRateLimit;
-        if (!config.enabled) return;
-
         const now = Date.now();
-        // If the window expired, reset the count and start a new window.
-        if (now - player.alertWindowStartTime > config.timeWindow) {
-            player.alertWindowStartTime = now;
-            player.alertCountInWindow = 1; // This is the first alert in the new window
-        } else {
-            // Otherwise, just increment the count.
-            player.alertCountInWindow++;
+
+        // Always increment the alert count for display purposes
+        player.alertCountInWindow++;
+
+        // Apply window logic only if global rate limiting is enabled
+        if (config.enabled) {
+            if (now - player.alertWindowStartTime > config.timeWindow) {
+                player.alertWindowStartTime = now;
+                player.alertCountInWindow = 1; // Reset count for new window
+            }
         }
+        this.updateTabList(player);
     }
     
     extractTextFromJSON(jsonText) {
