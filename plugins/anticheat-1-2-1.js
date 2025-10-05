@@ -390,7 +390,7 @@ const CHECKS = {
     
     TowerA: {
         config: { 
-            enabled: false, sound: true, vl: 10, cooldown: 2000, autoWdr: false,
+            enabled: true, sound: true, vl: 10, cooldown: 2000, autoWdr: false,
             description: "Detects ascending (towering) faster than normal while placing blocks below." 
         },
         
