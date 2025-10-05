@@ -40,27 +40,10 @@ module.exports = (api) => {
                     ]
                 }
             ]
-        },
-        {
-            label: 'Anticheat Integration',
-            description: 'Configure integration with the Anticheat plugin.',
-            defaults: {
-                autoFlushAnticheatViolationsOnGameStart: false
-            },
-            settings: [
-                {
-                    type: 'toggle',
-                    key: 'autoFlushAnticheatViolationsOnGameStart',
-                    text: ['OFF', 'ON'],
-                    description: 'Automatically flush Anticheat violations when a Bedwars game starts.'
-                }
-            ]
         }
     ];
 
     api.initializeConfig(configSchema);
-
-    api.configSchema(configSchema);
 
     api.commands((registry) => {
     });
@@ -82,7 +65,11 @@ class BedwarsWho {
     }
 
     onWorldChange(event) {
-        this.gameStarted = false;
+        if (this.gameStarted) {
+            this.gameStarted = false;
+            this.api.emit('bedwars_game_end', {});
+            this.api.debugLog(`${this.PLUGIN_PREFIX} Bedwars game ended.`);
+        }
     }
 
     onChat(event) {
@@ -94,14 +81,29 @@ class BedwarsWho {
 
         if (this.isBedwarsStartMessage(message)) {
             this.handleGameStart();
+        } else if (this.isBedwarsEndMessage(message)) {
+            this.handleGameEnd();
         }
     }
 
     isBedwarsStartMessage(message) {
         const cleanMessage = message.replace(/§[0-9a-fk-or]/g, '').trim();
         const startText = 'Protect your bed and destroy the enemy beds.';
-
         return cleanMessage.includes(startText);
+    }
+
+    isBedwarsEndMessage(message) {
+        const cleanMessage = message.replace(/§[0-9a-fk-or]/g, '').trim();
+        // Common Bedwars end messages
+        return cleanMessage.includes('WINNER!') || cleanMessage.includes('has been eliminated!');
+    }
+
+    handleGameEnd() {
+        if (this.gameStarted) {
+            this.gameStarted = false;
+            this.api.emit('bedwars_game_end', {});
+            this.api.debugLog(`${this.PLUGIN_PREFIX} Bedwars game ended.`);
+        }
     }
 
     handleGameStart() {
@@ -110,22 +112,13 @@ class BedwarsWho {
         }
 
         this.gameStarted = true;
-        
+        this.api.emit('bedwars_game_start', {});
+        this.api.debugLog(`${this.PLUGIN_PREFIX} Bedwars game started.`);
+
         const delay = this.api.config.get('delay');
-        const autoFlushAnticheat = this.api.config.get('anticheatIntegration.autoFlushAnticheatViolationsOnGameStart');
-        
+
         setTimeout(() => {
             this.runWhoCommand();
-
-            if (autoFlushAnticheat) {
-                const anticheatPlugin = this.api.getPluginInstance('anticheat');
-                if (anticheatPlugin && typeof anticheatPlugin.flushViolations === 'function') {
-                    anticheatPlugin.flushViolations();
-                    this.api.sendChatMessage(`${this.PLUGIN_PREFIX} §aAnticheat violations flushed.`);
-                } else {
-                    this.api.sendErrorMessage(`${this.PLUGIN_PREFIX} Anticheat plugin not found or flushViolations method is missing.`);
-                }
-            }
         }, delay);
     }
 

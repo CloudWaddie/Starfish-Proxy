@@ -40,6 +40,23 @@ module.exports = (api) => {
                 },
                 {
                     type: 'toggle',
+                    key: `checks.${checkName}.bedwarsAutoToggle`,
+                    text: ['OFF', 'ON'],
+                    description: `Automatically toggles this check during Bedwars games.`,
+                    condition: (cfg) => cfg.checks[checkName].enabled && (checkName === 'FlyA' || checkName === 'FlyB' || checkName === 'FlyC'),
+                },
+                {
+                    type: 'cycle',
+                    key: `checks.${checkName}.bedwarsToggleState`,
+                    values: [
+                        { text: 'ON', value: true },
+                        { text: 'OFF', value: false }
+                    ],
+                    description: `State to set this check to when Bedwars starts.`,
+                    condition: (cfg) => cfg.checks[checkName].enabled && cfg.checks[checkName].bedwarsAutoToggle && (checkName === 'FlyA' || checkName === 'FlyB' || checkName === 'FlyC'),
+                },
+                {
+                    type: 'toggle',
                     key: `checks.${checkName}.runCheckOnSelf`,
                     text: ['OFF', 'ON'],
                     description: `Runs this check on your own player.`,
@@ -129,6 +146,18 @@ module.exports = (api) => {
                     ],
                     condition: (cfg) => cfg.globalRateLimit.enabled,
                     description: 'The time window for the global alert limit.'
+                }
+            ]
+        },
+        {
+            label: 'Bedwars Integration',
+            defaults: { bedwarsIntegration: { autoFlushViolationsOnBedwarsStart: false } },
+            settings: [
+                {
+                    type: 'toggle',
+                    key: 'bedwarsIntegration.autoFlushViolationsOnBedwarsStart',
+                    text: ['OFF', 'ON'],
+                    description: 'Automatically flushes all Anticheat violations when a Bedwars game starts.'
                 }
             ]
         },
@@ -530,13 +559,14 @@ const CHECKS = {
         },
         check: function(player, config) {
             const MAX_DISTANCE = 6.0;
-            const MIN_DIFF = 2.0;
+            const MIN_DIFF = 5.0;
             let closestTarget = null;
             let minDistance = MAX_DISTANCE;
 
             // Find the closest player within range
             for (const otherPlayer of this.playersByUuid.values()) {
                 if (otherPlayer.uuid === player.uuid) continue;
+                if (otherPlayer.gameMode === -1) continue; // NPCs often won't have a gamemode set
 
                 const dx = otherPlayer.position.x - player.position.x;
                 const dy = otherPlayer.position.y - player.position.y;
@@ -581,6 +611,25 @@ const CHECKS = {
             description: "Identifies suspiciously perfect and instantaneous changes in viewing angle."
         },
         check: function(player, config) {
+            const MAX_COMBAT_DISTANCE = 8.0;
+            let isPlayerNearby = false;
+            for (const otherPlayer of this.playersByUuid.values()) {
+                if (otherPlayer.uuid === player.uuid) continue;
+                if (otherPlayer.gameMode === -1) continue;
+
+                const dx = otherPlayer.position.x - player.position.x;
+                const dy = otherPlayer.position.y - player.position.y;
+                const dz = otherPlayer.position.z - player.position.z;
+                const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+                if (distance < MAX_COMBAT_DISTANCE) {
+                    isPlayerNearby = true;
+                    break;
+                }
+            }
+
+            if (!isPlayerNearby) return;
+
             const timeSinceTeleport = Date.now() - player.lastTeleportTime;
             if (timeSinceTeleport < 3000) { // Use 3000ms or higher for safety
                 return;
@@ -1030,6 +1079,7 @@ class AnticheatSystem {
         this.userPosition = null;
         this.playersWithSuffix = new Set();
         this.gracePeriodEnd = 0;
+        this.bedwarsFlyCheckOriginalStates = {}; // To store original states of Fly checks
 
         this.CONFIG = {};
         this.refreshConfigConstants();
@@ -1087,7 +1137,9 @@ class AnticheatSystem {
                     sound: this.api.config.get(`checks.${checkName}.sound`),
                     alertBuffer: this.api.config.get(`checks.${checkName}.alertBuffer`),
                     autoWdr: this.api.config.get(`checks.${checkName}.autoWdr`),
-                    runCheckOnSelf: this.api.config.get(`checks.${checkName}.runCheckOnSelf`)
+                    runCheckOnSelf: this.api.config.get(`checks.${checkName}.runCheckOnSelf`),
+                    bedwarsAutoToggle: this.api.config.get(`checks.${checkName}.bedwarsAutoToggle`),
+                    bedwarsToggleState: this.api.config.get(`checks.${checkName}.bedwarsToggleState`)
                 };
             }
         }
@@ -1202,6 +1254,45 @@ class AnticheatSystem {
         this.unsubscribeBlockPlace = this.api.on('block_place', (event) => {
             this.handleBlockPlace(event);
         });
+
+        this.unsubscribeBedwarsGameStart = this.api.on('bedwars_game_start', () => {
+            this.handleBedwarsGameStart();
+        });
+
+        this.unsubscribeBedwarsGameEnd = this.api.on('bedwars_game_end', () => {
+            this.handleBedwarsGameEnd();
+        });
+    }
+
+    handleBedwarsGameStart() {
+        this.api.debugLog('[AC] Bedwars game started. Toggling Fly checks.');
+        for (const checkName of ['FlyA', 'FlyB', 'FlyC']) {
+            const config = this.CONFIG[checkName];
+            if (config && config.bedwarsAutoToggle) {
+                this.bedwarsFlyCheckOriginalStates[checkName] = this.api.config.get(`checks.${checkName}.enabled`);
+                this.api.config.set(`checks.${checkName}.enabled`, config.bedwarsToggleState);
+                this.api.debugLog(`[AC] Set ${checkName} to ${config.bedwarsToggleState ? 'ON' : 'OFF'} for Bedwars.`);
+            }
+        }
+        // Flush violations if configured
+        const autoFlushConfig = this.api.config.get('bedwarsIntegration.autoFlushViolationsOnBedwarsStart');
+        if (autoFlushConfig) {
+            this.flushViolations();
+            this.api.debugLog('[AC] Anticheat violations flushed due to Bedwars game start.');
+        }
+        this.refreshConfigConstants();
+    }
+
+    handleBedwarsGameEnd() {
+        this.api.debugLog('[AC] Bedwars game ended. Restoring Fly checks.');
+        for (const checkName of ['FlyA', 'FlyB', 'FlyC']) {
+            if (this.bedwarsFlyCheckOriginalStates[checkName] !== undefined) {
+                this.api.config.set(`checks.${checkName}.enabled`, this.bedwarsFlyCheckOriginalStates[checkName]);
+                this.api.debugLog(`[AC] Restored ${checkName} to ${this.bedwarsFlyCheckOriginalStates[checkName] ? 'ON' : 'OFF'}.`);
+                delete this.bedwarsFlyCheckOriginalStates[checkName];
+            }
+        }
+        this.refreshConfigConstants();
     }
 
     handleUpdateHealth(event) {
@@ -1864,6 +1955,8 @@ class AnticheatSystem {
         if (this.unsubscribeEntityVelocity) this.unsubscribeEntityVelocity();
         if (this.unsubscribePlayerTeleport) this.unsubscribePlayerTeleport();
         if (this.unsubscribeBlockPlace) this.unsubscribeBlockPlace();
+        if (this.unsubscribeBedwarsGameStart) this.unsubscribeBedwarsGameStart();
+        if (this.unsubscribeBedwarsGameEnd) this.unsubscribeBedwarsGameEnd();
 
         for (const uuid of this.playersWithSuffix) {
             this.api.clearDisplayNameSuffix(uuid);
