@@ -577,7 +577,7 @@ const CHECKS = {
 
     AimB: {
         config: {
-            enabled: true, sound: true, vl: 8, cooldown: 1000, autoWdr: false,
+            enabled: false, sound: true, vl: 8, cooldown: 1000, autoWdr: false,
             description: "Identifies suspiciously perfect and instantaneous changes in viewing angle."
         },
         check: function(player, config) {
