@@ -10,6 +10,7 @@ const Inventory = require('./api/inventory');
 const Movement = require('./api/movement');
 const Misc = require('./api/misc');
 const Hypixel = require('./api/hypixel');
+const GUIManager = require('./api/gui');
 const fs = require('fs');
 const path = require('path');
 const { getPluginsDir } = require('../utils/paths');
@@ -43,6 +44,7 @@ class PluginAPI {
         this.movementModule = new Movement(proxy, this.core);
         this.miscModule = new Misc(proxy, this.core);
         this.hypixelModule = new Hypixel(proxy, this.core);
+        this.guiManager = new GUIManager(this, this.events);
         
         this.config = this.core.config;
         this.log = this.core.log.bind(this.core);
@@ -94,6 +96,7 @@ class PluginAPI {
         this.createDispenser = this.inventoryModule.createDispenser.bind(this.inventoryModule);
         this.fillWindow = this.inventoryModule.fillWindow.bind(this.inventoryModule);
         this.clearWindow = this.inventoryModule.clearWindow.bind(this.inventoryModule);
+        this.createGUI = this.guiManager.create.bind(this.guiManager);
         
         Object.defineProperty(this, 'debug', {
             get: () => this.core.debug
@@ -159,6 +162,7 @@ class PluginAPI {
         this.sendScoreboardTeam = this.miscModule.sendScoreboardTeam.bind(this.miscModule);
 
         this.watchers = new Map();
+        this.reloadTimeout = null;
     }
 
     watchPlugins() {
@@ -167,8 +171,14 @@ class PluginAPI {
 
         fs.watch(pluginsDir, { recursive: true }, (eventType, filename) => {
             if (filename && filename.endsWith('.js')) {
-                console.log(`Plugin file changed: ${filename}. Reloading all plugins.`);
-                this.reloadPlugins();
+                if (this.reloadTimeout) {
+                    clearTimeout(this.reloadTimeout);
+                }
+                this.reloadTimeout = setTimeout(() => {
+                    console.log(`Plugin file changed: ${filename}. Reloading all plugins.`);
+                    this.reloadPlugins();
+                    this.reloadTimeout = null;
+                }, 500); // 500ms debounce
             }
         });
     }
@@ -909,6 +919,7 @@ class PluginAPI {
             createDispenser: withEnabledCheck(mainAPI.createDispenser, 'createDispenser'),
             fillWindow: withEnabledCheck(mainAPI.fillWindow, 'fillWindow'),
             clearWindow: withEnabledCheck(mainAPI.clearWindow, 'clearWindow'),
+            createGUI: withEnabledCheck(mainAPI.createGUI, 'createGUI'),
             
             // player state methods
             sendHealth: withEnabledCheck(mainAPI.sendHealth, 'sendHealth'),

@@ -383,6 +383,9 @@ class InventoryHandler {
     }
 
     _areSameItem(item1, item2) {
+        if (!item1 || !item2) {
+            return false;
+        }
         return lodash.isEqual(
             lodash.omit(item1, 'itemCount'),
             lodash.omit(item2, 'itemCount')
@@ -778,6 +781,9 @@ class InventoryHandler {
     }
 
     _getStackSize(itemId) {
+        if (itemId === undefined || itemId === null) {
+            return null;
+        }
         const stackSize = mcData.items[itemId]?.stackSize;
         if (stackSize === undefined) {
             return null;

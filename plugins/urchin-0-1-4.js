@@ -110,6 +110,36 @@ module.exports = (api) => {
                     description: 'Automatically check tags for team members in games.'
                 }
             ]
+        },
+        {
+            label: 'Caching',
+            description: 'Configure the caching of Urchin tags.',
+            defaults: { 
+                caching: { 
+                    enabled: true,
+                    ttl: 300
+                }
+            },
+            settings: [
+                {
+                    type: 'toggle',
+                    key: 'caching.enabled',
+                    text: ['OFF', 'ON'],
+                    description: 'Enable or disable caching of Urchin tags.'
+                },
+                {
+                    type: 'cycle',
+                    key: 'caching.ttl',
+                    description: 'The time in seconds to cache Urchin tags.',
+                    displayLabel: 'Cache Time',
+                    values: [
+                        { text: '5 minutes', value: 300 },
+                        { text: '10 minutes', value: 600 },
+                        { text: '15 minutes', value: 900 },
+                        { text: '30 minutes', value: 1800 }
+                    ]
+                }
+            ]
         }
     ];
 
@@ -159,6 +189,7 @@ class UrchinPlugin {
         this.api = api;
         this.PLUGIN_PREFIX = this.api.getPrefix();
         this.taggedDisplayNames = new Map();
+        this.cache = new Map();
         
         this.VALID_TAG_TYPES = [
             'info', 'caution', 'closet_cheater', 'confirmed_cheater', 
@@ -175,6 +206,7 @@ class UrchinPlugin {
     onRespawn(event) {
         this.taggedDisplayNames.clear();
         this.api.clearAllDisplayNames();
+        this.cache.clear();
     }
 
     onPluginRestored(event) {
@@ -410,6 +442,10 @@ class UrchinPlugin {
         };
 
         const req = https.request(options, (res) => {
+            if (res.statusCode >= 500) {
+                this.sendErrorMessage(`API test failed with status ${res.statusCode}: Urchin API is currently unavailable.`);
+                return;
+            }
             let data = '';
             res.on('data', (chunk) => {
                 data += chunk;
@@ -420,7 +456,8 @@ class UrchinPlugin {
                         JSON.parse(data);
                         if (apiKey) {
                             this.sendSuccessMessage('API key is valid and working!');
-                        } else {
+                        }
+                        else {
                             this.sendSuccessMessage('API connection successful (no API key)!');
                         }
                     } catch (e) {
@@ -557,6 +594,9 @@ class UrchinPlugin {
             };
 
             const req = https.request(options, (res) => {
+                if (res.statusCode >= 500) {
+                    return reject(new Error(`Urchin API is currently unavailable (HTTP ${res.statusCode}).`));
+                }
                 let data = '';
                 res.on('data', (chunk) => {
                     data += chunk;
@@ -580,7 +620,7 @@ class UrchinPlugin {
             });
 
             req.on('error', (err) => {
-                resolve({ valid: false });
+                reject(new Error('Urchin API is currently unavailable.'));
             });
             
             req.write('{"usernames":[]}');
@@ -718,15 +758,42 @@ class UrchinPlugin {
     async batchCheckUrchinTags(usernames) {
         const apiKey = this.api.config.get('api.apiKey');
         const sources = 'MANUAL';
-        
+        const cacheEnabled = this.api.config.get('caching.enabled');
+        const cacheTtl = this.api.config.get('caching.ttl') * 1000; // convert to ms
+
+        const cachedResults = new Map();
+        const usernamesToFetch = [];
+
+        if (cacheEnabled) {
+            const now = Date.now();
+            for (const username of usernames) {
+                if (this.cache.has(username)) {
+                    const cached = this.cache.get(username);
+                    if (now - cached.timestamp < cacheTtl) {
+                        cachedResults.set(username, cached.tags);
+                    } else {
+                        usernamesToFetch.push(username);
+                    }
+                } else {
+                    usernamesToFetch.push(username);
+                }
+            }
+        } else {
+            usernamesToFetch.push(...usernames);
+        }
+
+        if (usernamesToFetch.length === 0) {
+            return { players: Object.fromEntries(cachedResults) };
+        }
+
         return new Promise((resolve, reject) => {
-            const requestBody = { usernames: usernames };
+            const requestBody = { usernames: usernamesToFetch };
             const jsonBody = JSON.stringify(requestBody);
-            
-            const path = apiKey 
+
+            const path = apiKey
                 ? `/player?key=${apiKey}&sources=${sources}`
                 : `/player?sources=${sources}`;
-            
+
             const options = {
                 hostname: 'urchin.ws',
                 path: path,
@@ -743,14 +810,32 @@ class UrchinPlugin {
                     data += chunk;
                 });
                 res.on('end', () => {
+                    if (res.statusCode >= 500) {
+                        return reject(new Error(`Urchin API is currently unavailable (HTTP ${res.statusCode}).`));
+                    }
                     try {
                         const response = JSON.parse(data);
                         if (response === "Invalid Key") {
                             throw new Error("Invalid API Key");
                         }
+
+                        if (cacheEnabled) {
+                            const now = Date.now();
+                            for (const username in response.players) {
+                                this.cache.set(username, { tags: response.players[username], timestamp: now });
+                            }
+                        }
+
+                        // Merge cached and fetched results
+                        for (const [username, tags] of cachedResults) {
+                            if (!response.players[username]) {
+                                response.players[username] = tags;
+                            }
+                        }
+
                         resolve(response);
                     } catch (err) {
-                        reject(err);
+                        reject(new Error('Failed to parse Urchin API response.'));
                     }
                 });
             });
@@ -758,7 +843,7 @@ class UrchinPlugin {
             req.on('error', (err) => {
                 reject(new Error('Urchin API is currently unavailable.'));
             });
-            
+
             req.write(jsonBody);
             req.end();
         });
@@ -778,6 +863,9 @@ class UrchinPlugin {
                     data += chunk;
                 });
                 res.on('end', () => {
+                    if (res.statusCode >= 500) {
+                        return reject(new Error(`Mojang API is currently unavailable (HTTP ${res.statusCode}).`));
+                    }
                     if (res.statusCode === 200) {
                         try {
                             const response = JSON.parse(data);
@@ -836,6 +924,9 @@ class UrchinPlugin {
             };
 
             const req = https.request(options, (res) => {
+                if (res.statusCode >= 500) {
+                    return reject(new Error(`Urchin API is currently unavailable (HTTP ${res.statusCode}).`));
+                }
                 let data = '';
                 res.on('data', (chunk) => {
                     data += chunk;

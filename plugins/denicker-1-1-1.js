@@ -1,18 +1,221 @@
 // Automatic Denicker
 // Adapted from Pug's Denicker Raven script (github.com/PugrillaDev)
 
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+
+class NickDatabase {
+    constructor(dbPath) {
+        this.dbPath = dbPath;
+        this.db = null;
+        this.initialized = false;
+    }
+
+    async initialize() {
+        if (this.initialized) return;
+
+        return new Promise((resolve, reject) => {
+            this.db = new sqlite3.Database(this.dbPath, (err) => {
+                if (err) {
+                    console.error('Error opening nick database:', err.message);
+                    reject(err);
+                    return;
+                }
+
+                this.db.run(`
+                    CREATE TABLE IF NOT EXISTS nicks (
+                        nick_name TEXT PRIMARY KEY,
+                        real_name TEXT NOT NULL,
+                        uuid TEXT,
+                        first_seen INTEGER NOT NULL,
+                        last_seen INTEGER NOT NULL,
+                        detection_count INTEGER DEFAULT 1
+                    )
+                `, (err) => {
+                    if (err) {
+                        console.error('Error creating nicks table:', err.message);
+                        reject(err);
+                        return;
+                    }
+                    this.initialized = true;
+                    console.log('Nick database initialized at:', this.dbPath);
+                    resolve();
+                });
+            });
+        });
+    }
+
+    async close() {
+        if (this.db) {
+            return new Promise((resolve) => {
+                this.db.close((err) => {
+                    if (err) {
+                        console.error('Error closing nick database:', err.message);
+                    }
+                    this.db = null;
+                    this.initialized = false;
+                    resolve();
+                });
+            });
+        }
+    }
+
+    async storeNick(nickName, realName, uuid = null) {
+        if (!this.initialized) await this.initialize();
+
+        return new Promise((resolve, reject) => {
+            const now = Date.now();
+
+            this.db.run(`
+                INSERT INTO nicks (nick_name, real_name, uuid, first_seen, last_seen, detection_count)
+                VALUES (?, ?, ?, ?, ?, 1)
+                ON CONFLICT(nick_name) DO UPDATE SET
+                    real_name = excluded.real_name,
+                    uuid = COALESCE(excluded.uuid, uuid),
+                    last_seen = excluded.last_seen,
+                    detection_count = detection_count + 1
+            `, [nickName, realName, uuid, now, now], function(err) {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(this.changes > 0);
+                }
+            });
+        });
+    }
+
+    async getRealName(nickName) {
+        if (!this.initialized) await this.initialize();
+
+        return new Promise((resolve, reject) => {
+            this.db.get('SELECT real_name FROM nicks WHERE nick_name = ?', [nickName], (err, row) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(row ? row.real_name : null);
+                }
+            });
+        });
+    }
+
+    async getNickNames(realName) {
+        if (!this.initialized) await this.initialize();
+
+        return new Promise((resolve, reject) => {
+            this.db.all('SELECT nick_name FROM nicks WHERE real_name = ?', [realName], (err, rows) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(rows.map(row => row.nick_name));
+                }
+            });
+        });
+    }
+
+    async getNickInfo(nickName) {
+        if (!this.initialized) await this.initialize();
+
+        return new Promise((resolve, reject) => {
+            this.db.get('SELECT * FROM nicks WHERE nick_name = ?', [nickName], (err, row) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(row || null);
+                }
+            });
+        });
+    }
+
+    async getStats() {
+        if (!this.initialized) await this.initialize();
+
+        return new Promise((resolve, reject) => {
+            this.db.get(`
+                SELECT
+                    COUNT(*) as total_entries,
+                    SUM(detection_count) as total_detections,
+                    MAX(last_seen) as most_recent_detection,
+                    (SELECT COUNT(DISTINCT real_name) FROM nicks) as unique_players
+                FROM nicks
+            `, (err, row) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(row);
+                }
+            });
+        });
+    }
+
+    async getRecentNicks(limit = 10) {
+        if (!this.initialized) await this.initialize();
+
+        return new Promise((resolve, reject) => {
+            this.db.all(`
+                SELECT nick_name, real_name, first_seen, last_seen, detection_count, uuid
+                FROM nicks
+                ORDER BY last_seen DESC
+                LIMIT ?
+            `, [limit], (err, rows) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(rows);
+                }
+            });
+        });
+    }
+
+    async searchNicks(pattern, limit = 10) {
+        if (!this.initialized) await this.initialize();
+
+        return new Promise((resolve, reject) => {
+            this.db.all(`
+                SELECT nick_name, real_name, last_seen, detection_count
+                FROM nicks
+                WHERE nick_name LIKE ? OR real_name LIKE ?
+                ORDER BY last_seen DESC
+                LIMIT ?
+            `, [`%${pattern}%`, `%${pattern}%`, limit], (err, rows) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(rows);
+                }
+            });
+        });
+    }
+
+    async deleteNick(nickName) {
+        if (!this.initialized) await this.initialize();
+
+        return new Promise((resolve, reject) => {
+            this.db.run('DELETE FROM nicks WHERE nick_name = ?', [nickName], function(err) {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(this.changes > 0); // Returns true if a row was deleted
+                }
+            });
+        });
+    }
+}
+
 module.exports = (api) => {
     api.metadata({
         name: 'denicker',
         displayName: 'Nick Alerts',
         prefix: '§cDN',
         version: '1.1.1',
-        author: 'Hexze',
+        author: 'Hexze and CloudWaddie',
         minVersion: '0.1.7',
         description: 'Detects and resolves nicked players (Inspired by github.com/PugrillaDev)',
     });
 
-    const denicker = new Denicker(api);
+    const { getPluginDataDir } = require('../src/utils/paths');
+    const dbPath = path.join(getPluginDataDir(), 'denicker-nicks.db');
+
+    const denicker = new Denicker(api, dbPath);
     
     const configSchema = [
         {
@@ -49,7 +252,8 @@ module.exports = (api) => {
                         { text: '1000ms', value: 1000 },
                         { text: '1500ms', value: 1500 }
                     ]
-                }
+                },
+
             ]
         },
         {
@@ -115,6 +319,160 @@ module.exports = (api) => {
                 const playerName = ctx.args.player;
                 denicker.findPlayerSkin(playerName);
             });
+
+        registry.command('search')
+            .description('Search for nicks or real names matching a pattern')
+            .argument('<pattern>', 'Search pattern (supports wildcards)')
+            .handler(async (ctx) => {
+                const pattern = ctx.args.pattern;
+                try {
+                    const results = await denicker.database.searchNicks(pattern, 5);
+                    if (results.length === 0) {
+                        ctx.send(`${denicker.PLUGIN_PREFIX} No matches found for '${pattern}'.`);
+                        return;
+                    }
+
+                    let message = `${denicker.PLUGIN_PREFIX} Search results for '${pattern}':\n`;
+                    results.forEach((result, index) => {
+                        const date = new Date(result.last_seen).toLocaleDateString();
+                        message += `§7${index + 1}. §6${result.nick_name} §f-> §6${result.real_name} §8[${date}, ${result.detection_count}x]\n`;
+                    });
+                    ctx.send(message.trim());
+                } catch (err) {
+                    ctx.send(`${denicker.PLUGIN_PREFIX} Error searching database: ${err.message}`);
+                }
+            });
+
+        registry.command('find')
+            .description('Find all nicks used by a specific player')
+            .argument('<player>', 'Real player name to search for')
+            .handler(async (ctx) => {
+                const playerName = ctx.args.player;
+                try {
+                    const nicks = await denicker.database.getNickNames(playerName);
+                    if (nicks.length === 0) {
+                        ctx.send(`${denicker.PLUGIN_PREFIX} No nicks found for '${playerName}'.`);
+                        return;
+                    }
+
+                    let message = `${denicker.PLUGIN_PREFIX} Nicks used by §6${playerName}§f:\n`;
+                    nicks.forEach((nick, index) => {
+                        message += `§7${index + 1}. §6${nick}\n`;
+                    });
+                    ctx.send(message.trim());
+                } catch (err) {
+                    ctx.send(`${denicker.PLUGIN_PREFIX} Error querying database: ${err.message}`);
+                }
+            });
+
+        registry.command('check')
+            .description('Check if a nickname is known and find its real name')
+            .argument('<nickname>', 'Nickname to check')
+            .handler(async (ctx) => {
+                const nickName = ctx.args.nickname;
+                try {
+                    const realName = await denicker.database.getRealName(nickName);
+                    if (realName) {
+                        const info = await denicker.database.getNickInfo(nickName);
+                        const date = new Date(info.last_seen).toLocaleDateString();
+                    ctx.send(`${denicker.PLUGIN_PREFIX} §6${nickName}§f is §6${realName} §8[${date}, ${info.detection_count}x detected]`);
+                    ctx.send(`${denicker.PLUGIN_PREFIX} §7(Note: This information may not be 100% accurate as players can change their nicks)`);
+                    } else {
+                        ctx.send(`${denicker.PLUGIN_PREFIX} No database entry found for '${nickName}'.`);
+                    }
+                } catch (err) {
+                    ctx.send(`${denicker.PLUGIN_PREFIX} Error checking database: ${err.message}`);
+                }
+            });
+
+        registry.command('stats')
+            .description('Show nick database statistics')
+            .handler(async (ctx) => {
+                try {
+                    const stats = await denicker.database.getStats();
+                    const lastDetection = stats.most_recent_detection ?
+                        new Date(stats.most_recent_detection).toLocaleString() : 'Never';
+
+                    const message = `${denicker.PLUGIN_PREFIX} Nick Database Stats:\n` +
+                        `§7• Total entries: §6${stats.total_entries || 0}\n` +
+                        `§7• Total detections: §6${stats.total_detections || 0}\n` +
+                        `§7• Unique players: §6${stats.unique_players || 0}\n` +
+                        `§7• Last detection: §6${lastDetection}`;
+
+                    ctx.send(message);
+                } catch (err) {
+                    ctx.send(`${denicker.PLUGIN_PREFIX} Error retrieving stats: ${err.message}`);
+                }
+            });
+
+        registry.command('list')
+            .description('Show recently resolved nicknames in a GUI.')
+            .option('--limit', 'Number of entries to show', '10')
+            .handler(async (ctx) => {
+                const limit = Math.min(parseInt(ctx.options.limit) || 10, 54); // Max 54 for a large chest
+                await denicker.showNickListGUI(ctx.proxy.currentPlayer, limit);
+            });
+
+        registry.command('add')
+            .description('Manually add a nick relationship to the database')
+            .argument('<nick>', 'The nickname')
+            .argument('<real>', 'The real player name')
+            .handler(async (ctx) => {
+                const nickName = ctx.args.nick;
+                const realName = ctx.args.real;
+
+                try {
+                    const stored = await denicker.database.storeNick(nickName, realName);
+                    if (stored) {
+                        ctx.send(`${denicker.PLUGIN_PREFIX} Successfully added §6${nickName} §f-> §6${realName} §fto database.`);
+                    } else {
+                        ctx.send(`${denicker.PLUGIN_PREFIX} Failed to add nick to database.`);
+                    }
+                } catch (err) {
+                    ctx.send(`${denicker.PLUGIN_PREFIX} Error adding to database: ${err.message}`);
+                }
+            });
+
+        registry.command('remove')
+            .description('Remove a nick relationship from the database')
+            .argument('<nick>', 'The nickname to remove')
+            .handler(async (ctx) => {
+                const nickName = ctx.args.nick;
+
+                try {
+                    const deleted = await denicker.database.deleteNick(nickName);
+                    if (deleted) {
+                        ctx.send(`${denicker.PLUGIN_PREFIX} Successfully removed §6${nickName} §ffrom database.`);
+                    } else {
+                        ctx.send(`${denicker.PLUGIN_PREFIX} No entry found for '${nickName}' in database.`);
+                    }
+                } catch (err) {
+                    ctx.send(`${denicker.PLUGIN_PREFIX} Error removing from database: ${err.message}`);
+                }
+            });
+
+        registry.command('scan')
+            .description('Rescan all players currently in the world')
+            .handler(async (ctx) => {
+                try {
+                    let scanned = 0;
+                    denicker.parsed.clear();
+                    // Get all players in the world
+                    for (const [uuid, playerData] of Object.entries(denicker.api.players)) {
+                        if (playerData.name && uuid.charAt(14) === '1') { // Valid player UUID
+                            const player = denicker.api.getPlayerInfo(uuid);
+                            if (player) {
+                                await denicker.processPlayer(player);
+                                scanned++;
+                            }
+                        }
+                    }
+
+                    ctx.send(`${denicker.PLUGIN_PREFIX} Rescanned §6${scanned} §fplayers in the world.`);
+                } catch (err) {
+                    ctx.send(`${denicker.PLUGIN_PREFIX} Error during rescan: ${err.message}`);
+                }
+            });
     });
     
     denicker.registerHandlers();
@@ -122,14 +480,21 @@ module.exports = (api) => {
 };
 
 class Denicker {
-    constructor(api) {
+    constructor(api, dbPath) {
         this.api = api;
+        this.dbPath = dbPath;
         this.PLUGIN_PREFIX = this.api.getPrefix();
         this.parsed = new Set();
         this.nickDisplayNames = new Map();
         this.pendingChecks = new Map();
         this.teamDataReceived = new Set();
         this.resolvedNicks = new Map();
+        this.database = new NickDatabase(dbPath);
+
+        // Initialize database
+        this.database.initialize().catch(err => {
+            console.error('Failed to initialize nick database:', err);
+        });
     }
 
     registerHandlers() {
@@ -153,58 +518,49 @@ class Denicker {
     }
 
     reset() {
-        this.parsed.clear();
         this.pendingChecks.clear();
         this.teamDataReceived.clear();
         this.nickDisplayNames.clear();
         this.resolvedNicks.clear();
     }
 
+    async processPlayer(player) {
+        if (!player || !player.name || typeof player.name !== 'string' || player.uuid.charAt(14) !== '1') return;
+        if (this.parsed.has(player.uuid)) return;
+
+        const team = this.api.getPlayerTeam(player.name);
+        if (team !== null) {
+            this.teamDataReceived.add(player.name);
+            await this.parseSkinData(player, team);
+            this.parsed.add(player.uuid);
+            this.pendingChecks.delete(player.name);
+        } else {
+            this.pendingChecks.set(player.name, player);
+        }
+    }
+
     onPlayerListUpdate(event) {
         if (event.action !== 0) return;
         
         for (const playerData of event.players) {
-            if (!playerData.name || typeof playerData.name !== 'string' || playerData.uuid.charAt(14) !== '1') continue;
-            
-            if (this.parsed.has(playerData.uuid)) continue;
-            
-            const player = {
-                uuid: playerData.uuid,
-                name: playerData.name,
-                properties: playerData.properties
-            };
-            
-            const team = this.api.getPlayerTeam(player.name);
-            if (team !== null) {
-                this.teamDataReceived.add(player.name);
-                this.parseSkinData(player, team);
-                this.parsed.add(player.uuid);
-            } else {
-                this.pendingChecks.set(player.name, player);
-            }
+            this.processPlayer(playerData);
         }
     }
     
     onTeamUpdate(event) {
         if (event.mode === 0 || event.mode === 2 || event.mode === 3) {
             for (const [playerName, player] of this.pendingChecks) {
-                const team = this.api.getPlayerTeam(playerName);
-                if (team !== null) {
-                    this.teamDataReceived.add(playerName);
-                    this.parseSkinData(player, team);
-                    this.parsed.add(player.uuid);
-                    this.pendingChecks.delete(playerName);
-                }
+                this.processPlayer(player);
             }
         }
     }
 
-    parseSkinData(player, team) {
+    async parseSkinData(player, team) {
         const { uuid, name, properties } = player;
-        
+
         const playerProperties = properties || this.api.getPlayerInfo(uuid)?.properties;
         if (!playerProperties) return;
-        
+
         const textureProp = playerProperties.find(p => p.name === 'textures');
         if (!textureProp?.value) return;
 
@@ -214,29 +570,55 @@ class Denicker {
             if (!url) return;
 
             const hash = url.split('/').pop();
-            
             const prefix = team?.prefix || '';
             const suffix = team?.suffix || '';
             const teamFormattedName = prefix + name + suffix;
-
-            if (KNOWN_NICK_SKINS.has(hash)) {
-                this.api.debugLog(`Unresolved nick: ${name}`);
-                if (this.api.config.get('showUnresolvedNicks.enabled')) {
-                    this.sendAlert(teamFormattedName, null);
-                }
-                this.setNickDisplayName(uuid, name, null);
-                return;
-            }
-
             const realName = skinData.profileName;
-            if (realName && realName !== name) {
-                this.api.debugLog(`Resolved nick: ${name} -> ${realName}`);
+
+            // If real name is found via skin and it's not a known nick skin
+            if (realName && realName !== name && !KNOWN_NICK_SKINS.has(hash)) {
+                this.api.debugLog(`Resolved nick via skin: ${name} -> ${realName}`);
                 this.resolvedNicks.set(name, realName);
+
+                // Store in DB
+                try {
+                    await this.database.storeNick(name, realName, uuid);
+                    this.api.debugLog(`Stored nick ${name}->${realName} in database.`);
+                } catch (err) {
+                    this.api.debugLog(`Failed to store nick ${name}->${realName}: ${err.message}`);
+                }
+
+                // Emit event and send notifications
                 this.api.emit('denicker:nick_resolved', { nickName: name, realName: realName, uuid: uuid });
                 this.sendCubelifyMessage(realName);
                 this.sendAlert(teamFormattedName, realName);
                 this.setNickDisplayName(uuid, name, realName);
+                return;
             }
+
+            // If skin doesn't reveal real name, check the database
+            try {
+                const storedRealName = await this.database.getRealName(name);
+                if (storedRealName) {
+                    this.api.debugLog(`Resolved nick from database: ${name} -> ${storedRealName}`);
+                    this.resolvedNicks.set(name, storedRealName);
+                    this.api.emit('denicker:nick_resolved', { nickName: name, realName: storedRealName, uuid: uuid });
+                    this.sendCubelifyMessage(storedRealName);
+                    this.sendAlert(teamFormattedName, storedRealName);
+                    this.setNickDisplayName(uuid, name, storedRealName);
+                    return;
+                }
+            } catch (err) {
+                this.api.debugLog(`Database lookup error for ${name}: ${err.message}`);
+            }
+
+            // If still not found, the player is considered nicked
+            this.api.debugLog(`Unresolved nick: ${name}`);
+            if (this.api.config.get('showUnresolvedNicks.enabled')) {
+                this.sendAlert(teamFormattedName, null);
+            }
+            this.setNickDisplayName(uuid, name, null);
+
         } catch (e) {
             this.api.log(`Skin parse error for ${name}: ${e.message}`);
         }
@@ -348,6 +730,145 @@ class Denicker {
             this.api.chat(result);
         } catch (e) {
             this.api.chat(`${this.PLUGIN_PREFIX} Error parsing skin data for '${playerName}': ${e.message}`);
+        }
+    }
+
+    async showNickListGUI(player, limit) {
+        try {
+            const recent = await this.database.getRecentNicks(limit);
+            if (recent.length === 0) {
+                this.api.chat(`${this.PLUGIN_PREFIX} No recent nicks in database.`);
+                return;
+            }
+
+            const gui = this.api.createGUI('Recent Nicks', 54);
+            gui.addBorder();
+
+            const itemsPerPage = 36; // 4 rows of 9
+            const prevPageItem = {
+                blockId: 262, // Arrow
+                itemCount: 1,
+                displayName: '§aPrevious Page'
+            };
+            const nextPageItem = {
+                blockId: 262, // Arrow
+                itemCount: 1,
+                displayName: '§aNext Page'
+            };
+            gui.setPagination(itemsPerPage, prevPageItem, nextPageItem);
+
+
+            for (let i = 0; i < recent.length; i++) {
+                const entry = recent[i];
+                if (!entry || !entry.real_name || !entry.nick_name) continue;
+
+                const date = new Date(entry.last_seen).toLocaleDateString();
+                const playerInfo = this.api.getPlayerInfo(entry.uuid);
+                const textureProp = playerInfo?.properties?.find(p => p.name === 'textures');
+
+                let nbtData;
+                if (textureProp) {
+                    nbtData = {
+                        type: 'compound',
+                        name: '',
+                        value: {
+                            display: {
+                                type: 'compound',
+                                value: {
+                                    Name: {
+                                        type: 'string',
+                                        value: `§6${entry.real_name}`
+                                    },
+                                    Lore: {
+                                        type: 'list',
+                                        value: {
+                                            type: 'string',
+                                            value: [
+                                                '§7§m------------------',
+                                                `§7Nick: §e${entry.nick_name}`,
+                                                `§7First Seen: §a${new Date(entry.first_seen).toLocaleDateString()}`,
+                                                `§7Last Seen: §a${new Date(entry.last_seen).toLocaleDateString()}`,
+                                                `§7Detections: §a${entry.detection_count || 1}`,
+                                                '§7§m------------------'
+                                            ]
+                                        }
+                                    }
+                                }
+                            },
+                            SkullOwner: {
+                                type: 'compound',
+                                value: {
+                                    Id: {
+                                        type: 'string',
+                                        value: entry.uuid
+                                    },
+                                    Properties: {
+                                        type: 'compound',
+                                        value: {
+                                            textures: {
+                                                type: 'list',
+                                                value: {
+                                                    type: 'compound',
+                                                    value: [{
+                                                        type: 'string',
+                                                        name: 'Value',
+                                                        value: textureProp.value
+                                                    }]
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    };
+                } else {
+                    nbtData = {
+                        type: 'compound',
+                        name: '',
+                        value: {
+                            display: {
+                                type: 'compound',
+                                value: {
+                                    Name: {
+                                        type: 'string',
+                                        value: `§6${entry.real_name}`
+                                    },
+                                    Lore: {
+                                        type: 'list',
+                                        value: {
+                                            type: 'string',
+                                            value: [
+                                                '§7§m------------------',
+                                                `§7Nick: §e${entry.nick_name}`,
+                                                `§7First Seen: §a${new Date(entry.first_seen).toLocaleDateString()}`,
+                                                `§7Last Seen: §a${new Date(entry.last_seen).toLocaleDateString()}`,
+                                                `§7Detections: §a${entry.detection_count || 1}`,
+                                                '§7§m------------------'
+                                            ]
+                                        }
+                                    }
+                                }
+                            },
+                            SkullOwner: { type: 'compound', value: { Name: { type: 'string', value: entry.real_name } } }
+                        }
+                    };
+                }
+
+
+                const item = {
+                    blockId: 397, // minecraft:skull
+                    itemDamage: 3, // player head
+                    itemCount: 1,
+                    nbtData: nbtData
+                };
+
+                gui.setItem(i, item);
+            }
+
+            gui.show(player);
+        } catch (err) {
+            this.api.chat(`${this.PLUGIN_PREFIX} Error retrieving recent nicks: ${err.message}`);
         }
     }
 }

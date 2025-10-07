@@ -86,6 +86,7 @@ module.exports = {
         },
         scoreboard_score: {
             safe: true,
+            updatesState: true,
             eventMapping: {
                 name: 'scoreboard_score',
                 extractor: (data) => ({

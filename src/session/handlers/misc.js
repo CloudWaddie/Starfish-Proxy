@@ -115,7 +115,7 @@ class MiscHandler {
 
     handleScore(data) {
         const { scoreName, action, objective, value } = data;
-        
+
         if (action === 1) {
             this.gameState.scoreboards.forEach(scoreboard => {
                 scoreboard.scores.delete(scoreName);

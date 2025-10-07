@@ -40,23 +40,6 @@ module.exports = (api) => {
                 },
                 {
                     type: 'toggle',
-                    key: `checks.${checkName}.bedwarsAutoToggle`,
-                    text: ['OFF', 'ON'],
-                    description: `Automatically toggles this check during Bedwars games.`,
-                    condition: (cfg) => cfg.checks[checkName].enabled && (checkName === 'FlyA' || checkName === 'FlyB' || checkName === 'FlyC'),
-                },
-                {
-                    type: 'cycle',
-                    key: `checks.${checkName}.bedwarsToggleState`,
-                    values: [
-                        { text: 'ON', value: true },
-                        { text: 'OFF', value: false }
-                    ],
-                    description: `State to set this check to when Bedwars starts.`,
-                    condition: (cfg) => cfg.checks[checkName].enabled && cfg.checks[checkName].bedwarsAutoToggle && (checkName === 'FlyA' || checkName === 'FlyB' || checkName === 'FlyC'),
-                },
-                {
-                    type: 'toggle',
                     key: `checks.${checkName}.runCheckOnSelf`,
                     text: ['OFF', 'ON'],
                     description: `Runs this check on your own player.`,
@@ -196,80 +179,7 @@ module.exports = (api) => {
         }
     };
 };
-
-const flyCMinRepeatTicks = 10;
-
 const CHECKS = {
-    FlyA: {
-        config: {
-            enabled: false, sound: true, vl: 2, cooldown: 1000, autoWdr: false,
-            description: "Detects vertical motion stopping mid-air."
-        },
-        check: function(player, config) {
-            if (!player.onGround && !player.isInWater && !player.isElytraFlying) {
-                if (player.velocity.y === 0) {
-                    player.flyA.zeroVelocityTicks++;
-                } else {
-                    player.flyA.zeroVelocityTicks = 0;
-                }
-
-                if (player.flyA.zeroVelocityTicks >= 2) {
-                    this.addViolation(player, 'FlyA', 1);
-                    if (this.shouldAlert(player, 'FlyA', config)) {
-                        this.flag(player, 'FlyA', player.violations.FlyA);
-                        this.markAlert(player, 'FlyA');
-                    }
-                }
-            } else {
-                player.flyA.zeroVelocityTicks = 0;
-                this.reduceViolation(player, 'FlyA', 1);
-            }
-        }
-    },
-
-    FlyB: {
-        config: {
-            enabled: false, sound: true, vl: 1, cooldown: 1000, autoWdr: false,
-            description: "Detects swimming while not in water."
-        },
-        check: function(player, config) {
-            if (player.isSwimming && !player.isInWater) {
-                this.addViolation(player, 'FlyB', 1);
-                if (this.shouldAlert(player, 'FlyB', config)) {
-                    this.flag(player, 'FlyB', player.violations.FlyB);
-                    this.markAlert(player, 'FlyB');
-                }
-            }
-        }
-    },
-
-    FlyC: {
-        config: {
-            enabled: false, sound: true, vl: 10, cooldown: 2000, autoWdr: false,
-            description: "Detects constant vertical movement speed mid-air."
-        },
-        check: function(player, config) {
-            if (!player.onGround && !player.isInWater) {
-                if (player.velocity.y === player.flyC.lastVelocityY) {
-                    player.flyC.repeatTicks++;
-                } else {
-                    player.flyC.repeatTicks = 0;
-                }
-                player.flyC.lastVelocityY = player.velocity.y;
-
-                if (player.flyC.repeatTicks >= flyCMinRepeatTicks) {
-                    this.addViolation(player, 'FlyC', 1);
-                    if (this.shouldAlert(player, 'FlyC', config)) {
-                        this.flag(player, 'FlyC', player.violations.FlyC);
-                        this.markAlert(player, 'FlyC');
-                    }
-                }
-            } else {
-                player.flyC.repeatTicks = 0;
-            }
-        }
-    },
-
     NoSlowA: {
         config: {
             enabled: true, sound: true, vl: 20, cooldown: 2000, autoWdr: false,
@@ -552,58 +462,7 @@ const CHECKS = {
     },
 
 
-    AimA: {
-        config: {
-            enabled: true, sound: true, vl: 10, cooldown: 1000, autoWdr: false,
-            description: "Analyzes rotation for unnaturally smooth or precise movements."
-        },
-        check: function(player, config) {
-            const MAX_DISTANCE = 6.0;
-            const MIN_DIFF = 5.0;
-            let closestTarget = null;
-            let minDistance = MAX_DISTANCE;
-
-            // Find the closest player within range
-            for (const otherPlayer of this.playersByUuid.values()) {
-                if (otherPlayer.uuid === player.uuid) continue;
-                if (otherPlayer.gameMode === -1) continue; // NPCs often won't have a gamemode set
-
-                const dx = otherPlayer.position.x - player.position.x;
-                const dy = otherPlayer.position.y - player.position.y;
-                const dz = otherPlayer.position.z - player.position.z;
-                const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    closestTarget = otherPlayer;
-                }
-            }
-
-            if (closestTarget) {
-                const EYE_HEIGHT = 1.62;
-                const dx = closestTarget.position.x - player.position.x;
-                const dy = (closestTarget.position.y + EYE_HEIGHT) - (player.position.y + EYE_HEIGHT);
-                const dz = closestTarget.position.z - player.position.z;
-                const horizontalDist = Math.sqrt(dx * dx + dz * dz);
-
-                let idealYaw = Math.atan2(dz, dx) * (180 / Math.PI) - 90;
-                if (idealYaw < 0) idealYaw += 360;
-
-                const idealPitch = -Math.atan2(dy, horizontalDist) * (180 / Math.PI);
-
-                const yawDiff = Math.abs(player.yaw - idealYaw);
-                const pitchDiff = Math.abs(player.pitch - idealPitch);
-
-                if (yawDiff < MIN_DIFF && pitchDiff < MIN_DIFF) {
-                    this.addViolation(player, 'AimA', 1);
-                    if (this.shouldAlert(player, 'AimA', config)) {
-                        this.flag(player, 'AimA', player.violations.AimA);
-                        this.markAlert(player, 'AimA');
-                    }
-                }
-            }
-        }
-    },
+    
 
     AimB: {
         config: {
@@ -640,7 +499,12 @@ const CHECKS = {
             const deltaYaw = Math.abs(player.yaw - player.lastYaw);
             const deltaPitch = Math.abs(player.pitch - player.lastPitch);
 
-            const YAW_STEPS = [90, 135, 180];
+            // Whitelist 180 degree turns
+            if (Math.abs(deltaYaw - 180) < 10) {
+                return;
+            }
+
+            const YAW_STEPS = [90, 135];
             const PITCH_STEPS = [90, 135];
             const MIN_DIFF = 3.0; // Increased tolerance from 2.0 to 3.0
 
@@ -651,20 +515,16 @@ const CHECKS = {
                     break;
                 }
             }
-            if (!flagged) {
-                for (const step of PITCH_STEPS) {
-                    if (Math.abs(deltaPitch - step) < MIN_DIFF) {
-                        flagged = true;
-                        break;
-                    }
-                }
-            }
 
             if (flagged) {
-                this.addViolation(player, 'AimB', 1);
-                if (this.shouldAlert(player, 'AimB', config)) {
-                    this.flag(player, 'AimB', player.violations.AimB);
-                    this.markAlert(player, 'AimB');
+                // Contextual analysis: only flag if followed by an attack
+                const timeSinceLastSwing = Date.now() - player.lastSwingTime;
+                if (timeSinceLastSwing < 500) {
+                    this.addViolation(player, 'AimB', 1);
+                    if (this.shouldAlert(player, 'AimB', config)) {
+                        this.flag(player, 'AimB', player.violations.AimB);
+                        this.markAlert(player, 'AimB');
+                    }
                 }
             }
         }
@@ -904,14 +764,7 @@ class PlayerData {
 
         this.activeEffects = new Map();
 
-        this.flyA = {
-            zeroVelocityTicks: 0
-        };
-
-        this.flyC = {
-            lastVelocityY: null,
-            repeatTicks: 0
-        };
+        
 
         this.velocityA = {
             isChecking: false,
@@ -950,6 +803,9 @@ class PlayerData {
             lastMotionX: null,
             lastMotionZ: null
         };
+        this.jumpTick = 0;
+        this.isInvisible = false;
+        
     }
     
     updatePosition(x, y, z, onGround, yaw = null, pitch = null) {
@@ -966,6 +822,7 @@ class PlayerData {
 
         if (this.lastOnGround && !onGround && y > this.position.y) {
             this.lastJumpTime = Date.now();
+            this.jumpTick = 10; // Set jumpTick to 10 ticks (500ms)
         }
 
         this.lastPosition = { ...this.position };
@@ -1079,7 +936,8 @@ class AnticheatSystem {
         this.userPosition = null;
         this.playersWithSuffix = new Set();
         this.gracePeriodEnd = 0;
-        this.bedwarsFlyCheckOriginalStates = {}; // To store original states of Fly checks
+        
+        this.isBedwarsGame = false;
 
         this.CONFIG = {};
         this.refreshConfigConstants();
@@ -1265,15 +1123,8 @@ class AnticheatSystem {
     }
 
     handleBedwarsGameStart() {
-        this.api.debugLog('[AC] Bedwars game started. Toggling Fly checks.');
-        for (const checkName of ['FlyA', 'FlyB', 'FlyC']) {
-            const config = this.CONFIG[checkName];
-            if (config && config.bedwarsAutoToggle) {
-                this.bedwarsFlyCheckOriginalStates[checkName] = this.api.config.get(`checks.${checkName}.enabled`);
-                this.api.config.set(`checks.${checkName}.enabled`, config.bedwarsToggleState);
-                this.api.debugLog(`[AC] Set ${checkName} to ${config.bedwarsToggleState ? 'ON' : 'OFF'} for Bedwars.`);
-            }
-        }
+        this.isBedwarsGame = true;
+        
         // Flush violations if configured
         const autoFlushConfig = this.api.config.get('bedwarsIntegration.autoFlushViolationsOnBedwarsStart');
         if (autoFlushConfig) {
@@ -1284,14 +1135,8 @@ class AnticheatSystem {
     }
 
     handleBedwarsGameEnd() {
-        this.api.debugLog('[AC] Bedwars game ended. Restoring Fly checks.');
-        for (const checkName of ['FlyA', 'FlyB', 'FlyC']) {
-            if (this.bedwarsFlyCheckOriginalStates[checkName] !== undefined) {
-                this.api.config.set(`checks.${checkName}.enabled`, this.bedwarsFlyCheckOriginalStates[checkName]);
-                this.api.debugLog(`[AC] Restored ${checkName} to ${this.bedwarsFlyCheckOriginalStates[checkName] ? 'ON' : 'OFF'}.`);
-                delete this.bedwarsFlyCheckOriginalStates[checkName];
-            }
-        }
+        this.isBedwarsGame = false;
+        
         this.refreshConfigConstants();
     }
 
@@ -1691,6 +1536,7 @@ class AnticheatSystem {
                     }
                     
                     player.isSprinting = !!(flags & 0x08);
+                    player.isInvisible = !!(flags & 0x20);
                     
                     const wasUsingItem = player.isUsingItem;
                     player.isUsingItem = !!(flags & 0x10);
@@ -1755,6 +1601,8 @@ class AnticheatSystem {
         for (const checkName of Object.keys(CHECKS)) {
             const checkConfig = this.CONFIG[checkName];
             if (!checkConfig || !checkConfig.enabled) continue;
+
+            
             
             const checkDefinition = CHECKS[checkName];
             if (checkDefinition && checkDefinition.check) {

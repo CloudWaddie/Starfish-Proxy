@@ -18,7 +18,7 @@ class PlayerSession {
         this.packetProcessor = proxy.packetSystem.getProcessor();
         this.username = client.username;
         this.uuid = client.uuid;
-        this.gameState = new GameState();
+        this.gameState = new GameState(proxy);
         this.connected = false;
         this.forceReauth = proxy.currentPlayer?.forceReauth || false;
         this.tickInterval = null;
