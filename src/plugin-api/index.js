@@ -1,4 +1,5 @@
 const Core = require('./core');
+const sqlite3 = require('sqlite3');
 const Players = require('./api/player');
 const Events = require('./events');
 const DisplayNames = require('./display-names');
@@ -28,6 +29,7 @@ class PluginAPI {
         this.proxyVersion = packageJson.version;
         this.dependencyResolver = new DependencyResolver();
         this.signatureVerifier = new PluginSignatureVerifier();
+        this.sqlite3 = sqlite3;
         
         this.pluginStates = new Map();
         this.pluginInstances = new Map();
@@ -773,6 +775,8 @@ class PluginAPI {
                 pluginMetadata.configSchema = schema;
                 this._ensureConfigCommandRegistered(pluginName);
             },
+
+            sqlite3: mainAPI.sqlite3,
             
             config: pluginCore.config,
             log: withEnabledCheck(pluginCore.log.bind(pluginCore), 'log'),

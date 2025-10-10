@@ -1,21 +1,21 @@
 // Automatic Denicker
 // Adapted from Pug's Denicker Raven script (github.com/PugrillaDev)
 
-const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 class NickDatabase {
-    constructor(dbPath) {
+    constructor(dbPath, sqlite3) {
         this.dbPath = dbPath;
         this.db = null;
         this.initialized = false;
+        this.sqlite3 = sqlite3;
     }
 
     async initialize() {
         if (this.initialized) return;
 
         return new Promise((resolve, reject) => {
-            this.db = new sqlite3.Database(this.dbPath, (err) => {
+            this.db = new this.sqlite3.Database(this.dbPath, (err) => {
                 if (err) {
                     console.error('Error opening nick database:', err.message);
                     reject(err);
@@ -202,6 +202,7 @@ class NickDatabase {
 }
 
 module.exports = (api) => {
+    const sqlite3 = api.sqlite3.verbose();
     api.metadata({
         name: 'denicker',
         displayName: 'Nick Alerts',
@@ -215,7 +216,7 @@ module.exports = (api) => {
     const { getPluginDataDir } = require('../src/utils/paths');
     const dbPath = path.join(getPluginDataDir(), 'denicker-nicks.db');
 
-    const denicker = new Denicker(api, dbPath);
+    const denicker = new Denicker(api, dbPath, sqlite3);
     
     const configSchema = [
         {
@@ -480,7 +481,7 @@ module.exports = (api) => {
 };
 
 class Denicker {
-    constructor(api, dbPath) {
+    constructor(api, dbPath, sqlite3) {
         this.api = api;
         this.dbPath = dbPath;
         this.PLUGIN_PREFIX = this.api.getPrefix();
@@ -490,7 +491,7 @@ class Denicker {
         this.pendingChecks = new Map();
         this.teamDataReceived = new Set();
         this.resolvedNicks = new Map();
-        this.database = new NickDatabase(dbPath);
+        this.database = new NickDatabase(dbPath, sqlite3);
 
         // Initialize database
         this.database.initialize().catch(err => {
