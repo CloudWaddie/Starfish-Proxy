@@ -27,5 +27,10 @@
   "devDependencies": {
     "@types/ws": "^8.18.1",
     "nexe": "^4.0.0-rc.6"
+  },
+  "pkg": {
+    "assets": [
+      "node_modules/sqlite3/build/Release/node_sqlite3.node"
+    ]
   }
 }

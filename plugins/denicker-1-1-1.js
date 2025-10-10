@@ -485,6 +485,7 @@ class Denicker {
         this.dbPath = dbPath;
         this.PLUGIN_PREFIX = this.api.getPrefix();
         this.parsed = new Set();
+        this.processing = new Set();
         this.nickDisplayNames = new Map();
         this.pendingChecks = new Map();
         this.teamDataReceived = new Set();
@@ -527,16 +528,25 @@ class Denicker {
     async processPlayer(player) {
         if (!player || !player.name || typeof player.name !== 'string' || player.uuid.charAt(14) !== '1') return;
         if (this.parsed.has(player.uuid)) return;
+        if (this.processing.has(player.uuid)) return;
+
+        this.processing.add(player.uuid);
+
+        this.api.debugLog(`[Denicker] Processing player ${player.name} (${player.uuid})`);
 
         const team = this.api.getPlayerTeam(player.name);
         if (team !== null) {
+            this.api.debugLog(`[Denicker] Player ${player.name} has team data. Parsing skin.`);
             this.teamDataReceived.add(player.name);
             await this.parseSkinData(player, team);
             this.parsed.add(player.uuid);
             this.pendingChecks.delete(player.name);
         } else {
+            this.api.debugLog(`[Denicker] Player ${player.name} has no team data yet. Adding to pending checks.`);
             this.pendingChecks.set(player.name, player);
         }
+
+        this.processing.delete(player.uuid);
     }
 
     onPlayerListUpdate(event) {
@@ -798,10 +808,7 @@ class Denicker {
                             SkullOwner: {
                                 type: 'compound',
                                 value: {
-                                    Id: {
-                                        type: 'string',
-                                        value: entry.uuid
-                                    },
+                                    Id: { type: 'string', value: entry.uuid },
                                     Properties: {
                                         type: 'compound',
                                         value: {
@@ -810,9 +817,11 @@ class Denicker {
                                                 value: {
                                                     type: 'compound',
                                                     value: [{
-                                                        type: 'string',
-                                                        name: 'Value',
-                                                        value: textureProp.value
+                                                        type: 'compound',
+                                                        name: '',
+                                                        value: {
+                                                            Value: { type: 'string', value: textureProp.value }
+                                                        }
                                                     }]
                                                 }
                                             }
@@ -849,8 +858,7 @@ class Denicker {
                                         }
                                     }
                                 }
-                            },
-                            SkullOwner: { type: 'compound', value: { Name: { type: 'string', value: entry.real_name } } }
+                            }
                         }
                     };
                 }

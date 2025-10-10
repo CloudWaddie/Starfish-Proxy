@@ -5,8 +5,6 @@ class GUI {
         this.size = size;
         this.items = new Map();
         this.clickHandlers = new Map();
-        this.page = 0;
-        this.itemsPerPage = size;
     }
 
     setItem(slot, item) {
@@ -15,6 +13,7 @@ class GUI {
     }
 
     onClick(slot, handler) {
+        console.log(`onClick: ${slot}`);
         this.clickHandlers.set(slot, handler);
         return this;
     }
@@ -23,16 +22,8 @@ class GUI {
         this.manager.show(player, this);
     }
 
-    addBorder(item = { blockId: 160, itemDamage: 7, itemCount: 1, displayName: ' ' }) {
-        this.borderItem = item;
-        return this;
-    }
-
-    setPagination(itemsPerPage, prevPageItem, nextPageItem) {
-        this.itemsPerPage = itemsPerPage;
-        this.prevPageItem = prevPageItem;
-        this.nextPageItem = nextPageItem;
-        return this;
+    close() {
+        this.manager.close(this);
     }
 }
 
@@ -48,19 +39,12 @@ class GUIManager {
                 const { gui, windowId } = playerData;
                 if (event.windowId !== windowId) return;
 
-                this.api.sendTransaction(windowId, event.action, false);
-                this.render(event.player, gui, windowId);
+                event.cancelled = true;
+                this.api.sendTransaction(windowId, event.action, true);
 
-                if (gui.prevPageItem && event.slot === gui.size - 5 && gui.page > 0) {
-                    gui.page--;
-                    this.render(event.player, gui, windowId);
-                    return;
-                }
-
-                if (gui.nextPageItem && event.slot === gui.size - 4 && (gui.page + 1) * gui.itemsPerPage < gui.items.size) {
-                    gui.page++;
-                    this.render(event.player, gui, windowId);
-                    return;
+                const clickHandler = gui.clickHandlers.get(event.slot);
+                if (clickHandler) {
+                    clickHandler(event.player);
                 }
             }
         });
@@ -82,39 +66,21 @@ class GUIManager {
     render(player, gui, windowId) {
         const items = new Array(gui.size).fill({ blockId: -1 });
 
-        if (gui.borderItem) {
-            for (let i = 0; i < gui.size; i++) {
-                if (i < 9 || i >= gui.size - 9 || i % 9 === 0 || i % 9 === 8) {
-                    items[i] = gui.borderItem;
-                }
-            }
+        for (const [slot, item] of gui.items.entries()) {
+            items[slot] = item;
         }
-
-        const pageItems = Array.from(gui.items.values()).slice(gui.page * gui.itemsPerPage, (gui.page + 1) * gui.itemsPerPage);
-        let contentSlot = 0;
-        for (let i = 0; i < gui.size; i++) {
-            if (items[i].blockId === -1) { // If not a border item
-                if (contentSlot < pageItems.length) {
-                    items[i] = pageItems[contentSlot];
-                    contentSlot++;
-                }
-            }
-        }
-
-        if (gui.prevPageItem && gui.page > 0) {
-            items[gui.size - 5] = gui.prevPageItem;
-        } else {
-            items[gui.size - 5] = gui.borderItem || { blockId: -1 };
-        }
-
-        if (gui.nextPageItem && (gui.page + 1) * gui.itemsPerPage < gui.items.size) {
-            items[gui.size - 4] = gui.nextPageItem;
-        } else {
-            items[gui.size - 4] = gui.borderItem || { blockId: -1 };
-        }
-
 
         this.api.setWindowItems(windowId, items);
+    }
+
+    close(gui) {
+        for (const [uuid, playerData] of this.playerGuis.entries()) {
+            if (playerData.gui === gui) {
+                this.api.closeWindow(playerData.windowId);
+                this.playerGuis.delete(uuid);
+                break;
+            }
+        }
     }
 }
 
