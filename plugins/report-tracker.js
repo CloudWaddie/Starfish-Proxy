@@ -1,18 +1,19 @@
-
 const path = require('path');
+const sqlite3 = require('sqlite3');
 
 class ReportDatabase {
-    constructor(dbPath) {
+    constructor(dbPath, sqlite3) {
         this.dbPath = dbPath;
         this.db = null;
         this.initialized = false;
+        this.sqlite3 = sqlite3;
     }
 
     async initialize() {
         if (this.initialized) return;
 
         return new Promise((resolve, reject) => {
-            this.db = new sqlite3.Database(this.dbPath, (err) => {
+            this.db = new this.sqlite3.Database(this.dbPath, (err) => {
                 if (err) {
                     console.error('Error opening report database:', err.message);
                     reject(err);
@@ -120,6 +121,116 @@ class ReportDatabase {
     }
 }
 
+class ReportTracker {
+    constructor(api, dbPath, sqlite3) {
+        this.api = api;
+        this.dbPath = dbPath;
+        this.PLUGIN_PREFIX = this.api.getPrefix();
+        this.database = new ReportDatabase(dbPath, sqlite3);
+
+        this.database.initialize().catch(err => {
+            console.error('Failed to initialize report database:', err);
+        });
+    }
+
+    registerHandlers() {
+        this.api.on('player_info', this.onPlayerListUpdate.bind(this));
+    }
+
+    registerCommands() {
+        this.api.commands((registry) => {
+            registry.command('report')
+                .description('Report a player.')
+                .argument('<player>', 'Player to report')
+                .handler(async (ctx) => {
+                    const playerName = ctx.args.player;
+                    const player = this.api.getPlayerByName(playerName);
+                    const uuid = player ? player.uuid : null;
+                    try {
+                        const added = await this.database.addReport(playerName, uuid);
+                        if (added) {
+                            ctx.send(`${this.PLUGIN_PREFIX} Reported ${playerName}.`);
+                        } else {
+                            ctx.send(`${this.PLUGIN_PREFIX} ${playerName} is already reported.`);
+                        }
+                    } catch (err) {
+                        ctx.send(`${this.PLUGIN_PREFIX} Error reporting ${playerName}: ${err.message}`);
+                    }
+                });
+
+            registry.command('unreport')
+                .description('Remove a player from the report list.')
+                .argument('<player>', 'Player to unreport')
+                .handler(async (ctx) => {
+                    const playerName = ctx.args.player;
+                    try {
+                        const removed = await this.database.removeReport(playerName);
+                        if (removed) {
+                            ctx.send(`${this.PLUGIN_PREFIX} Removed ${playerName} from reports.`);
+                        } else {
+                            ctx.send(`${this.PLUGIN_PREFIX} ${playerName} was not reported.`);
+                        }
+                    } catch (err) {
+                        ctx.send(`${this.PLUGIN_PREFIX} Error un-reporting ${playerName}: ${err.message}`);
+                    }
+                });
+
+            registry.command('checkreport')
+                .description('Check if a player is on the report list.')
+                .argument('<player>', 'Player to check')
+                .handler(async (ctx) => {
+                    const playerName = ctx.args.player;
+                    try {
+                        const report = await this.database.getReport(playerName);
+                        if (report) {
+                            const date = new Date(report.reported_on).toLocaleString();
+                            ctx.send(`${this.PLUGIN_PREFIX} ${playerName} was reported on ${date}.`);
+                        } else {
+                            ctx.send(`${this.PLUGIN_PREFIX} ${playerName} is not on the report list.`);
+                        }
+                    } catch (err) {
+                        ctx.send(`${this.PLUGIN_PREFIX} Error checking report for ${playerName}: ${err.message}`);
+                    }
+                });
+
+            registry.command('listreports')
+                .description('List all reported players.')
+                .handler(async (ctx) => {
+                    try {
+                        const reports = await this.database.getAllReports();
+                        if (reports.length === 0) {
+                            ctx.send(`${this.PLUGIN_PREFIX} No players have been reported.`);
+                            return;
+                        }
+
+                        let message = `${this.PLUGIN_PREFIX} Reported players:\n`;
+                        reports.forEach((report, index) => {
+                            const date = new Date(report.reported_on).toLocaleString();
+                            message += `§7${index + 1}. §c${report.username} §7- ${date}\n`;
+                        });
+                        ctx.send(message.trim());
+                    } catch (err) {
+                        ctx.send(`${this.PLUGIN_PREFIX} Error listing reports: ${err.message}`);
+                    }
+                });
+        });
+    }
+
+    async onPlayerListUpdate(event) {
+        if (event.action !== 0) return;
+
+        for (const playerData of event.players) {
+            if (playerData.name) {
+                const report = await this.database.getReport(playerData.name);
+                if (report) {
+                    this.api.chat(`${this.PLUGIN_PREFIX} §cReported player ${playerData.name} has joined your game.`);
+                    this.api.sound('note.pling');
+                }
+            }
+        }
+    }
+}
+
 module.exports = (api) => {
     const sqlite3 = api.sqlite3.verbose();
     const path = require('path');
@@ -141,17 +252,3 @@ module.exports = (api) => {
 
     return reportTracker;
 };
-
-class ReportDatabase {
-    constructor(dbPath, sqlite3) {
-        this.dbPath = dbPath;
-        this.db = null;
-        this.initialized = false;
-        this.sqlite3 = sqlite3;
-    }
-
-    async initialize() {
-        if (this.initialized) return;
-
-        return new Promise((resolve, reject) => {
-            this.db = new this.sqlite3.Database(this.dbPath, (err) => {
