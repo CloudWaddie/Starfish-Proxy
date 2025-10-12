@@ -1005,7 +1005,7 @@ class PluginAPI {
             getDisplayNameSuffix: withEnabledCheck((uuid) => mainAPI.displayNames.getSuffix(uuid), 'getDisplayNameSuffix'),
             
             commands: (commands) => {
-                return mainAPI.commandsModule.register(pluginMetadata.name, commands);
+                return mainAPI.commandsModule.register(pluginMetadata.name, commands, pluginMetadata.description);
             },
             
             official: {

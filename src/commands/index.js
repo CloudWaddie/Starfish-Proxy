@@ -12,9 +12,11 @@ class CommandHandler {
         this.THEME = THEME;
     }
     
-    register(moduleName, registrationFunction) {
+    register(moduleName, registrationFunction, description = '') {
+        console.log(`Registering command module: ${moduleName}`); // Debugging line
         const normalizedModuleName = moduleName.toLowerCase();
         const moduleCommand = new Command(normalizedModuleName)
+            .description(description)
             .exitOverride()
             .configureOutput({ writeOut: () => {}, writeErr: () => {} })
             .addHelpCommand(false);
@@ -173,8 +175,13 @@ class CommandHandler {
         const moduleName = parts.shift()?.toLowerCase();
         const args = parts;
 
+        console.log(`Handling command: /${moduleName} ${args.join(' ')}`); // Debugging line
+
         const moduleCommand = this.modules.get(moduleName);
-        if (!moduleCommand) return false;
+        if (!moduleCommand) {
+            console.log(`Module '${moduleName}' not found.`); // Debugging line
+            return false;
+        }
 
         if (args.length === 0) {
             this._sendHelpMessage(moduleName, null, client);
