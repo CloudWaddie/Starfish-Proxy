@@ -26,7 +26,8 @@
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",
-    "nexe": "^4.0.0-rc.6"
+    "nexe": "^4.0.0-rc.6",
+    "pkg": "^5.8.1"
   },
   "pkg": {
     "assets": [
