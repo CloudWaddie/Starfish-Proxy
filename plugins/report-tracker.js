@@ -1,5 +1,4 @@
 const path = require('path');
-const sqlite3 = require('sqlite3');
 
 class ReportDatabase {
     constructor(dbPath, sqlite3) {
@@ -232,8 +231,6 @@ class ReportTracker {
 }
 
 module.exports = (api) => {
-    const sqlite3 = api.sqlite3.verbose();
-    const path = require('path');
     api.metadata({
         name: 'report-tracker',
         displayName: 'Report Tracker',
@@ -242,6 +239,12 @@ module.exports = (api) => {
         author: 'Gemini',
         description: 'Tracks reported players and notifies you when they are in your game.',
     });
+
+    if (!api.proxy) {
+        return;
+    }
+
+    const sqlite3 = api.sqlite3.verbose();
 
     const { getPluginDataDir } = require('../src/utils/paths');
     const dbPath = path.join(getPluginDataDir(), 'report-tracker.db');
