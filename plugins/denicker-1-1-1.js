@@ -202,7 +202,6 @@ class NickDatabase {
 }
 
 module.exports = (api) => {
-    const sqlite3 = api.sqlite3.verbose();
     api.metadata({
         name: 'denicker',
         displayName: 'Nick Alerts',
@@ -212,6 +211,12 @@ module.exports = (api) => {
         minVersion: '0.1.7',
         description: 'Detects and resolves nicked players (Inspired by github.com/PugrillaDev)',
     });
+
+    if (!api.proxy) {
+        return;
+    }
+
+    const sqlite3 = api.sqlite3.verbose();
 
     const { getPluginDataDir } = require('../src/utils/paths');
     const dbPath = path.join(getPluginDataDir(), 'denicker-nicks.db');
